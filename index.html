@@ -1846,12 +1846,18 @@ async function enviarASheet(pf){
   });
   
   try{
-    await fetch(SCRIPT_URL+'?action=write',{
-      method:'POST', mode:'no-cors',
-      headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({rows})
-    });
-  }catch(e){ console.warn('Error escribiendo en Sheets:',e); }
+    // Usar fetchScript para manejar redirects de Google correctamente
+    await fetchScript('action=write&data='+encodeURIComponent(JSON.stringify({rows})));
+  }catch(e){
+    // Fallback: intentar con no-cors si fetchScript falla
+    try{
+      await fetch(SCRIPT_URL+'?action=write',{
+        method:'POST', mode:'no-cors',
+        headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({rows})
+      });
+    }catch(e2){ console.warn('Error escribiendo en Sheets:',e2); }
+  }
   return rows;
 }
 
@@ -1914,35 +1920,41 @@ async function autorizarPF(id){
   updStats(); renderHist();
   syncPFtoSheet(pf);
   
-  toast('Enviando a compras...','ok');
-  await enviarASheet(pf);
+  toast('Enviando a pedidos...','ok');
   
+  // Esperar a que se escriba en Sheets ANTES de abrir WhatsApp
   try{
-    fetchScript('action=updatePFestado&id='+encodeURIComponent(pf.id)+'&estado=autorizado');
-  }catch(e){}
+    await enviarASheet(pf);
+    await fetchScript('action=updatePFestado&id='+encodeURIComponent(pf.id)+'&estado=autorizado');
+  }catch(e){ console.warn('Error sync sheet:',e); }
+  
+  // Pequeña pausa para asegurar que el fetch terminó
+  await new Promise(r=>setTimeout(r,1500));
+  
+  toast(`✅ Proforma N° ${pf.num} enviada a pedidos`,'ok');
   
   // Enviar WhatsApp con mensaje detallado (app nativa)
   const contactos=getContactos();
   if(!contactos.length){
-    toast(`✅ Proforma N° ${pf.num} autorizada — agrega contactos en Config`,'ok');
+    toast(`✅ Autorizada — agrega contactos en Config para enviar WhatsApp`,'ok');
     return;
   }
   
   const msg=generarMsgWhatsApp(pf);
   
+  // Usar window.open en vez de location.href para no interrumpir la página
   if(contactos.length===1){
-    window.location.href=`whatsapp://send?phone=${contactos[0].codigo}${contactos[0].tel}&text=${encodeURIComponent(msg)}`;
+    window.open(`https://api.whatsapp.com/send?phone=${contactos[0].codigo}${contactos[0].tel}&text=${encodeURIComponent(msg)}`,'_blank');
   } else {
     const nombres=contactos.map((c,i)=>`${i+1}. ${c.nombre}`).join('\n');
     const opcion=prompt(`¿A quién enviar el WhatsApp?\n${nombres}\n\n(número o "0" para no enviar):`);
     if(opcion&&opcion!=='0'){
       const idx=parseInt(opcion)-1;
       if(idx>=0&&idx<contactos.length){
-        window.location.href=`whatsapp://send?phone=${contactos[idx].codigo}${contactos[idx].tel}&text=${encodeURIComponent(msg)}`;
+        window.open(`https://api.whatsapp.com/send?phone=${contactos[idx].codigo}${contactos[idx].tel}&text=${encodeURIComponent(msg)}`,'_blank');
       }
     }
   }
-  toast(`✅ Proforma N° ${pf.num} autorizada`,'ok');
 }
 
 // ══════════════════════════════════════════
