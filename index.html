@@ -776,6 +776,8 @@ async function loadPFfromSheet(){
 }
 
 function limpiarDB(){
+  const clave=prompt('Ingresa la contraseña de administrador:');
+  if(clave!=='tecnimax2026') { toast('Contraseña incorrecta','err'); return; }
   if(!confirm('¿Borrar toda la base de datos importada?')) return;
   DB={productos:{},clientes:{},marcas:[],modelos:{},ordenes:{}};
   const nc=parseInt(localStorage.getItem('tmx5_nchunks')||'0');
@@ -1026,7 +1028,10 @@ function abrirBusq(tipo){
   const mo=document.getElementById('veh-mo').value;
   document.getElementById('mb-title').textContent=tipo==='prod'?'Buscar Producto en Cotización':'Buscar Servicio en Cotización';
   const hint=document.getElementById('mb-hint');
-  if(ma||mo){
+  if(tipo==='serv'){
+    hint.textContent='🔍 Buscando en todo el historial de servicios';
+    hint.style.color='var(--gold)';
+  } else if(ma||mo){
     hint.textContent=`🔍 Filtrando para: ${ma} ${mo}`.trim();
     hint.style.color='var(--gold)';
   } else {
@@ -1043,7 +1048,8 @@ function buscarHist(q){
   const res=document.getElementById('mb-res');
   if(!q||q.length<2){ res.innerHTML='<div class="empty">Escribe al menos 2 letras...</div>'; return; }
   const ql=q.toUpperCase();
-  const ords=getOrdsFiltradas();
+  // Servicios: buscar en TODAS las órdenes sin filtro de vehículo
+  const ords=tipoModal==='serv'?Object.values(DB.ordenes):getOrdsFiltradas();
   const mon=getMon();
   const rows=[];
   ords.forEach(ord=>{
@@ -1055,11 +1061,23 @@ function buscarHist(q){
     });
   });
   rows.sort((a,b)=>(b.ord.f||'').localeCompare(a.ord.f||''));
-  if(!rows.length){
-    res.innerHTML=`<div class="empty">Sin resultados para "<b>${q}</b>" en ${document.getElementById('veh-ma').value||'todos los vehículos'}</div>`;
+
+  // Servicios: eliminar duplicados por nombre, quedarse con el más reciente
+  let display=rows;
+  if(tipoModal==='serv'){
+    const seen={};
+    display=[];
+    rows.forEach(r=>{
+      const key=r.it.d.toUpperCase().trim();
+      if(!seen[key]){ seen[key]=true; display.push(r); }
+    });
+  }
+
+  if(!display.length){
+    res.innerHTML=`<div class="empty">Sin resultados para "<b>${q}</b>" en ${tipoModal==='serv'?'el historial':document.getElementById('veh-ma').value||'todos los vehículos'}</div>`;
     return;
   }
-  res.innerHTML=rows.slice(0,50).map(({ord,it})=>`
+  res.innerHTML=display.slice(0,50).map(({ord,it})=>`
     <div class="si" onclick="abrirOrden('${ord.n}','${esc(it.d)}')" style="padding:10px 12px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
