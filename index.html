@@ -1056,22 +1056,57 @@ function buscarHist(q){
   });
   rows.sort((a,b)=>(b.ord.f||'').localeCompare(a.ord.f||''));
 
-  // Servicios: eliminar duplicados por nombre, quedarse con el más reciente
-  let display=rows;
+  // Servicios: agrupar por nombre, filtrar ceros, calcular precio bajo (moda) y alto (máximo)
   if(tipoModal==='serv'){
-    const seen={};
-    display=[];
+    const grupos={};
     rows.forEach(r=>{
       const key=r.it.d.toUpperCase().trim();
-      if(!seen[key]){ seen[key]=true; display.push(r); }
+      if(!grupos[key]) grupos[key]={nombre:r.it.d, precios:[], ordReciente:r.ord, cantReciente:r.it.c};
+      if(r.it.p>0) grupos[key].precios.push(r.it.p);
     });
-  }
-
-  if(!display.length){
-    res.innerHTML=`<div class="empty">Sin resultados para "<b>${q}</b>" en ${tipoModal==='serv'?'el historial':document.getElementById('veh-ma').value||'todos los vehículos'}</div>`;
+    const servicios=Object.values(grupos).filter(g=>g.precios.length>0);
+    if(!servicios.length){
+      res.innerHTML=`<div class="empty">Sin resultados con precio para "<b>${q}</b>" en el historial</div>`;
+      return;
+    }
+    res.innerHTML=servicios.slice(0,50).map(g=>{
+      // Precio bajo = moda (más común)
+      const freqs={};
+      g.precios.forEach(p=>{ const k=p.toFixed(2); freqs[k]=(freqs[k]||0)+1; });
+      let modaVal=g.precios[0], modaCount=0;
+      Object.entries(freqs).forEach(([k,c])=>{ if(c>modaCount){ modaCount=c; modaVal=parseFloat(k); }});
+      // Precio alto = máximo
+      const maxVal=Math.max(...g.precios);
+      const mismo=Math.abs(modaVal-maxVal)<0.01;
+      const ord=g.ordReciente;
+      const nd=esc(g.nombre);
+      return `<div class="si" style="padding:12px;cursor:default">
+        <div style="margin-bottom:6px">
+          <b style="font-size:13px">${g.nombre}</b>
+          <span style="font-size:11px;color:var(--mu);margin-left:6px">(${g.precios.length} registro${g.precios.length>1?'s':''})</span>
+        </div>
+        <div style="font-size:11px;color:var(--mu);margin-bottom:8px">
+          Último: ${ord.ma} ${ord.mo} ${ord.a||''} · ${fFecha(ord.f)}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn bg bsm" onclick="agregarServDirecto('${nd}',${modaVal},${g.cantReciente})" style="flex:1;justify-content:center${mismo?'':';background:var(--gr)'}">
+            ${mismo?'➕':'⬇'} ${mismo?'Agregar':' Bajo'} ${mon} ${fmt(modaVal)}${!mismo&&modaCount>1?' (×'+modaCount+')':''}
+          </button>
+          ${!mismo?`<button class="btn bg bsm" onclick="agregarServDirecto('${nd}',${maxVal},${g.cantReciente})" style="flex:1;justify-content:center">
+            ⬆ Alto ${mon} ${fmt(maxVal)}
+          </button>`:''}
+        </div>
+      </div>`;
+    }).join('');
     return;
   }
-  res.innerHTML=display.slice(0,50).map(({ord,it})=>`
+
+  // Productos: mostrar normal con link a orden
+  if(!rows.length){
+    res.innerHTML=`<div class="empty">Sin resultados para "<b>${q}</b>" en ${document.getElementById('veh-ma').value||'todos los vehículos'}</div>`;
+    return;
+  }
+  res.innerHTML=rows.slice(0,50).map(({ord,it})=>`
     <div class="si" onclick="abrirOrden('${ord.n}','${esc(it.d)}')" style="padding:10px 12px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
@@ -1086,6 +1121,16 @@ function buscarHist(q){
         </div>
       </div>
     </div>`).join('');
+}
+
+// Agregar servicio directo desde búsqueda con precio seleccionado
+function agregarServDirecto(desc,precio,cant){
+  const isvDef=parseFloat(document.getElementById('pf-isv').value)||15;
+  const item={desc:desc, cod:'', precio:Math.round(precio*100)/100, costo:0, ganancia:0,
+              cantidad:cant||1, isv:isvDef, deOrden:null};
+  pfActual.servs.push(item);
+  renderListas(); recalc();
+  toast('Servicio agregado: '+desc,'ok');
 }
 
 // ══════════════════════════════════════════
