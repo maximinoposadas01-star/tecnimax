@@ -1912,49 +1912,64 @@ function generarMsgWhatsApp(pf){
 async function autorizarPF(id){
   const pf=proformas.find(p=>p.id===id);
   if(!pf){ toast('Error: proforma no encontrada','err'); return; }
-  if(!confirm(`¿Autorizar proforma N° ${pf.num} y enviar por WhatsApp?`)) return;
+  if(!confirm(`¿Autorizar proforma N° ${pf.num}?`)) return;
   
   pf.estado='autorizado';
   localStorage.setItem('tmx5_pf',JSON.stringify(proformas));
   localStorage.setItem('tmx5_num',String(nextNum));
   updStats(); renderHist();
-  syncPFtoSheet(pf);
   
-  toast('Enviando a pedidos...','ok');
+  toast('⏳ Enviando a pedidos...','ok');
   
-  // Esperar a que se escriba en Sheets ANTES de abrir WhatsApp
+  // Paso 1: Enviar TODO a Sheets y esperar
   try{
     await enviarASheet(pf);
-    await fetchScript('action=updatePFestado&id='+encodeURIComponent(pf.id)+'&estado=autorizado');
+    syncPFtoSheet(pf);
+    fetchScript('action=updatePFestado&id='+encodeURIComponent(pf.id)+'&estado=autorizado');
   }catch(e){ console.warn('Error sync sheet:',e); }
   
-  // Pequeña pausa para asegurar que el fetch terminó
-  await new Promise(r=>setTimeout(r,1500));
+  // Esperar que Google procese
+  await new Promise(r=>setTimeout(r,2000));
   
   toast(`✅ Proforma N° ${pf.num} enviada a pedidos`,'ok');
   
-  // Enviar WhatsApp con mensaje detallado (app nativa)
+  // Paso 2: Ofrecer enviar WhatsApp (separado, no interrumpe nada)
   const contactos=getContactos();
-  if(!contactos.length){
-    toast(`✅ Autorizada — agrega contactos en Config para enviar WhatsApp`,'ok');
-    return;
-  }
+  if(!contactos.length) return;
   
-  const msg=generarMsgWhatsApp(pf);
+  // Guardar datos para enviar WhatsApp con botón
+  window._waPendiente={pf,contactos};
   
-  // Usar window.open en vez de location.href para no interrumpir la página
-  if(contactos.length===1){
-    window.open(`https://api.whatsapp.com/send?phone=${contactos[0].codigo}${contactos[0].tel}&text=${encodeURIComponent(msg)}`,'_blank');
-  } else {
-    const nombres=contactos.map((c,i)=>`${i+1}. ${c.nombre}`).join('\n');
-    const opcion=prompt(`¿A quién enviar el WhatsApp?\n${nombres}\n\n(número o "0" para no enviar):`);
-    if(opcion&&opcion!=='0'){
-      const idx=parseInt(opcion)-1;
-      if(idx>=0&&idx<contactos.length){
-        window.open(`https://api.whatsapp.com/send?phone=${contactos[idx].codigo}${contactos[idx].tel}&text=${encodeURIComponent(msg)}`,'_blank');
-      }
-    }
+  // Mostrar botón flotante para enviar WhatsApp
+  let waBtn=document.getElementById('wa-flotante');
+  if(!waBtn){
+    waBtn=document.createElement('div');
+    waBtn.id='wa-flotante';
+    waBtn.style.cssText='position:fixed;bottom:70px;right:18px;z-index:300;display:flex;gap:8px;flex-direction:column;align-items:flex-end';
+    document.body.appendChild(waBtn);
   }
+  const nombres=contactos.map((c,i)=>`
+    <button onclick="enviarWA(${i})" style="padding:10px 16px;border-radius:25px;border:none;
+      background:#25D366;color:#fff;font-weight:700;font-size:14px;cursor:pointer;
+      box-shadow:0 4px 12px rgba(0,0,0,.25);display:flex;align-items:center;gap:8px;
+      font-family:'DM Sans',sans-serif">
+      📱 Enviar a ${c.nombre}
+    </button>`).join('');
+  waBtn.innerHTML=nombres+`
+    <button onclick="document.getElementById('wa-flotante').remove()" style="padding:6px 12px;
+      border-radius:15px;border:1px solid #ccc;background:#fff;color:#666;font-size:12px;
+      cursor:pointer;font-family:'DM Sans',sans-serif">✕ Cerrar</button>`;
+}
+
+function enviarWA(idx){
+  const d=window._waPendiente;
+  if(!d) return;
+  const c=d.contactos[idx];
+  const msg=generarMsgWhatsApp(d.pf);
+  window.open(`https://api.whatsapp.com/send?phone=${c.codigo}${c.tel}&text=${encodeURIComponent(msg)}`,'_blank');
+  // Quitar botón después de enviar
+  const el=document.getElementById('wa-flotante');
+  if(el) el.remove();
 }
 
 // ══════════════════════════════════════════
