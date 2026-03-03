@@ -686,24 +686,18 @@ function savePF(){
   localStorage.setItem('tmx5_num',String(nextNum));
 }
 // Sincronizar UNA proforma a Sheets
-function syncPFtoSheet(pf){
+async function syncPFtoSheet(pf){
   try{
-    fetch(SCRIPT_URL+'?action=savePF',{
-      method:'POST', mode:'no-cors',
-      headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify(pf)
-    });
-  }catch(e){}
+    const params='action=savePF&data='+encodeURIComponent(JSON.stringify(pf));
+    await fetchScript(params);
+  }catch(e){ console.error('syncPF error:',e); }
 }
 // Sincronizar TODAS las proformas a Sheets (para cambios de estado)
-function syncAllPFtoSheet(){
+async function syncAllPFtoSheet(){
   try{
-    fetch(SCRIPT_URL+'?action=saveAllPF',{
-      method:'POST', mode:'no-cors',
-      headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({proformas:proformas,nextNum:nextNum})
-    });
-  }catch(e){}
+    const params='action=saveAllPF&data='+encodeURIComponent(JSON.stringify({proformas:proformas,nextNum:nextNum}));
+    await fetchScript(params);
+  }catch(e){ console.error('syncAllPF error:',e); }
 }
 function loadPF(){
   try{ proformas=JSON.parse(localStorage.getItem('tmx5_pf')||'[]'); }catch(e){}
@@ -1859,11 +1853,7 @@ async function autorizarPF(id){
   await enviarASheet(pf);
   
   try{
-    fetch(SCRIPT_URL+'?action=updatePFestado',{
-      method:'POST', mode:'no-cors',
-      headers:{'Content-Type':'text/plain'},
-      body:JSON.stringify({id:pf.id,estado:'autorizado'})
-    });
+    fetchScript('action=updatePFestado&id='+encodeURIComponent(pf.id)+'&estado=autorizado');
   }catch(e){}
   
   // Enviar WhatsApp
