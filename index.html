@@ -27,16 +27,13 @@ link.rel = 'manifest';
 link.href = manifestURL;
 document.head.appendChild(link);
 
-// Service Worker inline
+// Service Worker — desregistrar cualquier SW viejo para evitar caché
 if('serviceWorker' in navigator){
-  const swCode = `
-    self.addEventListener('install', e => { self.skipWaiting(); });
-    self.addEventListener('activate', e => { e.waitUntil(clients.claim()); });
-    self.addEventListener('fetch', e => { e.respondWith(fetch(e.request).catch(() => new Response('Offline'))); });
-  `;
-  const swBlob = new Blob([swCode], {type:'application/javascript'});
-  const swURL = URL.createObjectURL(swBlob);
-  navigator.serviceWorker.register(swURL).catch(()=>{});
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    regs.forEach(r=>r.unregister());
+  });
+  // Limpiar caches viejos
+  if(window.caches) caches.keys().then(names=>names.forEach(n=>caches.delete(n)));
 }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -614,8 +611,7 @@ function saveDB(){
       try{ localStorage.setItem('tmx5_ord'+i, JSON.stringify(chunk)); }
       catch(e){ console.warn('Chunk',i,'no cabe'); }
     }
-    // Subir a Google Sheets en background
-    syncDBtoSheet();
+    // Sync automático desactivado — solo se sincroniza al autorizar pedidos
   }catch(e){ console.warn('saveDB error:',e.message); toast('Advertencia: datos no guardados completamente','err'); }
 }
 
@@ -648,8 +644,7 @@ function loadDB(){
       Object.assign(DB.ordenes,chunk);
     }
   }catch(e){ console.warn('loadDB:',e); }
-  // Si no hay datos locales, intentar descargar de Sheets
-  if(!Object.keys(DB.productos).length) loadDBfromSheet();
+  // Sync automático desactivado — cada dispositivo usa su DB local
 }
 
 async function loadDBfromSheet(){
@@ -702,8 +697,7 @@ async function syncAllPFtoSheet(){
 function loadPF(){
   try{ proformas=JSON.parse(localStorage.getItem('tmx5_pf')||'[]'); }catch(e){}
   nextNum=parseInt(localStorage.getItem('tmx5_num')||'5067');
-  // Sincronizar con Sheets después de 3 segundos para no interferir
-  setTimeout(()=>loadPFfromSheet(),3000);
+  // Sync automático de proformas desactivado — solo se sincroniza al autorizar pedidos
 }
 
 // Helper robusto para leer del Apps Script (maneja redirects de Google)
@@ -1398,7 +1392,7 @@ function guardarPF(){
   else{ proformas.unshift(pf); nextNum++; }
   pfActual.id=pf.id; pfActual.editMode=true;
   savePF(); updStats();
-  syncPFtoSheet(pf);
+  // syncPFtoSheet desactivado — solo se sincroniza al autorizar
   document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
   document.getElementById('pf-title').textContent='Modificar Proforma';
   toast(`✅ Proforma N° ${pf.num} guardada — ve a Cotización para verla`,'ok');
@@ -1517,7 +1511,7 @@ function renderSub(cid,list,isPend){
 
 function archivarPF(id){
   const pf=proformas.find(p=>p.id===id);
-  if(pf){ pf.estado='hist'; savePF(); updStats(); renderHist(); syncPFtoSheet(pf); toast('Cotización archivada','ok'); }
+  if(pf){ pf.estado='hist'; savePF(); updStats(); renderHist(); toast('Cotización archivada','ok'); }
 }
 function editarAutorizada(id){
   const pf=proformas.find(p=>p.id===id);
