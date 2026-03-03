@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1945,7 +1945,7 @@ async function autorizarPF(id){
   if(!waBtn){
     waBtn=document.createElement('div');
     waBtn.id='wa-flotante';
-    waBtn.style.cssText='position:fixed;bottom:70px;right:18px;z-index:300;display:flex;gap:8px;flex-direction:column;align-items:flex-end';
+    waBtn.style.cssText='position:fixed;bottom:16px;right:16px;z-index:300;display:flex;gap:8px;flex-direction:column;align-items:flex-end;max-height:calc(100vh - 80px);overflow-y:auto';
     document.body.appendChild(waBtn);
   }
   const nombres=contactos.map((c,i)=>`
