@@ -1844,20 +1844,20 @@ async function enviarASheet(pf){
     rows.push([pf.num, fecha, pf.vendedor||'', pf.cli.nom||'', veh, pf.veh.placa||'',
                'Producto', p.desc, p.cantidad, mon+' '+fmt(p.precio), 'Pendiente','']);
   });
+  pf.servs.forEach(s=>{
+    rows.push([pf.num, fecha, pf.vendedor||'', pf.cli.nom||'', veh, pf.veh.placa||'',
+               'Servicio', s.desc, s.cantidad, mon+' '+fmt(s.precio), 'Pendiente','']);
+  });
+  
+  if(!rows.length){ console.warn('enviarASheet: sin items para enviar'); return rows; }
   
   try{
-    // Usar fetchScript para manejar redirects de Google correctamente
-    await fetchScript('action=write&data='+encodeURIComponent(JSON.stringify({rows})));
-  }catch(e){
-    // Fallback: intentar con no-cors si fetchScript falla
-    try{
-      await fetch(SCRIPT_URL+'?action=write',{
-        method:'POST', mode:'no-cors',
-        headers:{'Content-Type':'text/plain'},
-        body:JSON.stringify({rows})
-      });
-    }catch(e2){ console.warn('Error escribiendo en Sheets:',e2); }
-  }
+    await fetch(SCRIPT_URL+'?action=write',{
+      method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({rows})
+    });
+  }catch(e){ console.warn('Error escribiendo en Sheets:',e); }
   return rows;
 }
 
