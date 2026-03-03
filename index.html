@@ -1859,28 +1859,54 @@ function generarMsgWhatsApp(pf){
   const veh=[pf.veh.ma,pf.veh.mo,pf.veh.a].filter(Boolean).join(' ');
   const mon=pf.moneda==='USD'?'$':'L';
   let msg=`🔧 *PEDIDO AUTORIZADO — Tecnimax*\n`;
-  msg+=`📋 Proforma N° ${pf.num}\n`;
-  msg+=`👤 Cliente: ${pf.cli.nom||'—'}\n`;
+  msg+=`━━━━━━━━━━━━━━━━━━━━\n`;
+  msg+=`📋 *Proforma N° ${pf.num}*\n`;
+  msg+=`📅 Fecha: ${fFecha(pf.fecha)}\n`;
+  if(pf.vendedor) msg+=`👨‍💼 Vendedor: ${pf.vendedor}\n`;
+  msg+=`\n👤 *CLIENTE:* ${pf.cli.nom||'—'}\n`;
+  if(pf.cli.tel) msg+=`📞 Tel: ${pf.cli.tel}\n`;
+  if(pf.cli.rtn) msg+=`🆔 RTN: ${pf.cli.rtn}\n`;
   msg+=`🚗 Vehículo: ${veh||'—'}`;
   if(pf.veh.placa) msg+=` | Placa: ${pf.veh.placa}`;
-  msg+=`\n📅 Fecha: ${fFecha(pf.fecha)}\n`;
-  if(pf.vendedor) msg+=`👨‍💼 Vendedor: ${pf.vendedor}\n`;
-  msg+=`\n*REPUESTOS SOLICITADOS:*\n`;
+  if(pf.veh.km) msg+=` | Km: ${pf.veh.km}`;
+  msg+=`\n`;
+
+  // Repuestos
+  msg+=`\n🔩 *REPUESTOS:*\n`;
   if(!pf.prods.length){
-    msg+=`(Sin productos — solo servicios)\n`;
+    msg+=`(Sin repuestos)\n`;
   } else {
     pf.prods.forEach((p,i)=>{
-      msg+=`${i+1}. ${p.desc} — ${p.cantidad} unid — ${mon} ${fmt(p.precio)} c/u\n`;
+      const total=p.precio*(1+(p.isv||0)/100)*p.cantidad;
+      msg+=`  ${i+1}. ${p.desc}\n     ${p.cantidad} unid × ${mon} ${fmt(p.precio)} = *${mon} ${fmt(total)}*\n`;
     });
   }
-  msg+=`\n_Favor actualizar estado en la app de pedidos_`;
+
+  // Mano de obra / Servicios
+  msg+=`\n🛠 *MANO DE OBRA:*\n`;
+  if(!pf.servs.length){
+    msg+=`(Sin servicios)\n`;
+  } else {
+    pf.servs.forEach((s,i)=>{
+      const total=s.precio*(1+(s.isv||0)/100)*s.cantidad;
+      msg+=`  ${i+1}. ${s.desc}\n     ${s.cantidad} × ${mon} ${fmt(s.precio)} = *${mon} ${fmt(total)}*\n`;
+    });
+  }
+
+  // Totales
+  msg+=`\n━━━━━━━━━━━━━━━━━━━━\n`;
+  if(pf.sub) msg+=`   Subtotal: ${mon} ${fmt(pf.sub)}\n`;
+  if(pf.dv>0) msg+=`   Descuento: -${mon} ${fmt(pf.dv)}\n`;
+  msg+=`   *💰 TOTAL: ${mon} ${fmt(pf.total)}*\n`;
+  if(pf.notas) msg+=`\n📝 Notas: ${pf.notas}\n`;
+  msg+=`\n_Favor confirmar recibido_`;
   return msg;
 }
 
 async function autorizarPF(id){
   const pf=proformas.find(p=>p.id===id);
   if(!pf){ toast('Error: proforma no encontrada','err'); return; }
-  if(!confirm(`¿Autorizar proforma N° ${pf.num} y enviar pedido a compras?`)) return;
+  if(!confirm(`¿Autorizar proforma N° ${pf.num} y enviar por WhatsApp?`)) return;
   
   pf.estado='autorizado';
   localStorage.setItem('tmx5_pf',JSON.stringify(proformas));
@@ -1895,7 +1921,7 @@ async function autorizarPF(id){
     fetchScript('action=updatePFestado&id='+encodeURIComponent(pf.id)+'&estado=autorizado');
   }catch(e){}
   
-  // Enviar WhatsApp
+  // Enviar WhatsApp con mensaje detallado (app nativa)
   const contactos=getContactos();
   if(!contactos.length){
     toast(`✅ Proforma N° ${pf.num} autorizada — agrega contactos en Config`,'ok');
@@ -1905,23 +1931,14 @@ async function autorizarPF(id){
   const msg=generarMsgWhatsApp(pf);
   
   if(contactos.length===1){
-    if(confirm(`¿Enviar WhatsApp a ${contactos[0].nombre}?`)){
-      const waUrl=`https://wa.me/${contactos[0].codigo}${contactos[0].tel}?text=${encodeURIComponent(msg)}`;
-      window.open(waUrl,'_blank');
-    }
+    window.location.href=`whatsapp://send?phone=${contactos[0].codigo}${contactos[0].tel}&text=${encodeURIComponent(msg)}`;
   } else {
     const nombres=contactos.map((c,i)=>`${i+1}. ${c.nombre}`).join('\n');
-    const opcion=prompt(`¿A quién enviar el WhatsApp?\n${nombres}\n\n(número, "todos", o "0" para no enviar):`);
+    const opcion=prompt(`¿A quién enviar el WhatsApp?\n${nombres}\n\n(número o "0" para no enviar):`);
     if(opcion&&opcion!=='0'){
-      if(opcion.toLowerCase()==='todos'){
-        contactos.forEach(c=>{
-          window.open(`https://wa.me/${c.codigo}${c.tel}?text=${encodeURIComponent(msg)}`,'_blank');
-        });
-      } else {
-        const idx=parseInt(opcion)-1;
-        if(idx>=0&&idx<contactos.length){
-          window.open(`https://wa.me/${contactos[idx].codigo}${contactos[idx].tel}?text=${encodeURIComponent(msg)}`,'_blank');
-        }
+      const idx=parseInt(opcion)-1;
+      if(idx>=0&&idx<contactos.length){
+        window.location.href=`whatsapp://send?phone=${contactos[idx].codigo}${contactos[idx].tel}&text=${encodeURIComponent(msg)}`;
       }
     }
   }
