@@ -1119,9 +1119,9 @@ function buscarHist(q){
 
 // Agregar servicio directo desde búsqueda con precio seleccionado
 function agregarServDirecto(desc,precio,cant){
-  const isvDef=parseFloat(document.getElementById('pf-isv').value)||15;
+  // Servicios del historial ya tienen precio final (con ISV incluido), no sumar ISV de nuevo
   const item={desc:desc, cod:'', precio:Math.round(precio*100)/100, costo:0, ganancia:0,
-              cantidad:cant||1, isv:isvDef, deOrden:null};
+              cantidad:cant||1, isv:0, deOrden:null};
   pfActual.servs.push(item);
   renderListas(); recalc();
   toast('Servicio agregado: '+desc,'ok');
