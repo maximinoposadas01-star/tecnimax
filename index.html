@@ -753,8 +753,11 @@ async function loadPFfromSheet(){
       });
     }
     
-    // Actualizar nextNum
-    proformas.forEach(p=>{ if(p.num>=nextNum) nextNum=p.num+1; });
+    // Actualizar nextNum (extraer parte numérica del número con prefijo)
+    proformas.forEach(p=>{ 
+      const n=parseInt(String(p.num).replace(/^[A-Z]+-/i,''))||0;
+      if(n>=nextNum) nextNum=n+1; 
+    });
     localStorage.setItem('tmx5_pf',JSON.stringify(proformas));
     localStorage.setItem('tmx5_num',String(nextNum));
     updStats();
@@ -1365,6 +1368,14 @@ function getMon(){ return document.getElementById('pf-mon')?.value==='USD'?'$':'
 // ══════════════════════════════════════════
 //  GUARDAR PROFORMA
 // ══════════════════════════════════════════
+// Generar prefijo de iniciales del vendedor
+function prefVendedor(nombre){
+  if(!nombre||!nombre.trim()) return '';
+  const partes=nombre.trim().toUpperCase().split(/\s+/);
+  if(partes.length===1) return partes[0].substring(0,2);
+  return partes.map(p=>p[0]).join('').substring(0,3);
+}
+
 function guardarPF(){
   const nom  =document.getElementById('cli-nom').value.trim();
   const placa=document.getElementById('veh-placa').value.trim();
@@ -1372,7 +1383,10 @@ function guardarPF(){
   if(!pfActual.prods.length&&!pfActual.servs.length){ toast('Agrega al menos un producto o servicio','err'); return null; }
   const tots=recalc();
   const existente=pfActual.id?proformas.find(p=>p.id===pfActual.id):null;
-  const num=existente?existente.num:nextNum;
+  const vendedor=document.getElementById('pf-vend').value.trim();
+  const pref=prefVendedor(vendedor);
+  // Si es nueva, generar número con prefijo; si existe, mantener el que tiene
+  const num=existente?existente.num:(pref?pref+'-'+nextNum:String(nextNum));
   // Mantener estado autorizado si ya estaba autorizado
   const estadoActual=existente?existente.estado:'pend';
   const esAutorizada=estadoActual==='autorizado';
@@ -2180,8 +2194,24 @@ function togglePed(row){
 
 // Recuperar proforma desde los datos de Pedidos ya cargados
 async function recuperarPFdeSheet(numProforma){
-  // Primero buscar si ya está en local
-  const local=proformas.find(p=>String(p.num)===String(numProforma));
+  // Primero buscar si ya está en local (verificar num Y placa para no confundir)
+  // Obtener placa del pedido actual
+  let placaPedido='';
+  try{
+    const json=await fetchScript('action=read');
+    if(json&&json.ok&&json.data){
+      const ped=json.data.find(p=>String(p.Proforma)===String(numProforma));
+      if(ped) placaPedido=(ped.Placa||'').trim().toUpperCase();
+    }
+  }catch(e){}
+  
+  const local=proformas.find(p=>{
+    if(String(p.num)!==String(numProforma)) return false;
+    if(placaPedido && p.veh && p.veh.placa){
+      return p.veh.placa.toUpperCase().replace(/[\s\-]/g,'')===placaPedido.replace(/[\s\-]/g,'');
+    }
+    return true;
+  });
   if(local){
     recuperarPF(local.id);
     pfActual.editMode=true;
