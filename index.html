@@ -2101,42 +2101,114 @@ function togglePed(row){
   }
 }
 
-// Recuperar proforma completa del Sheet para ver/editar
+// Recuperar proforma desde los datos de Pedidos ya cargados
 async function recuperarPFdeSheet(numProforma){
-  toast('⏳ Descargando proforma...','ok');
-  
   // Primero buscar si ya está en local
   const local=proformas.find(p=>String(p.num)===String(numProforma));
   if(local){
     recuperarPF(local.id);
     pfActual.editMode=true;
     goPage('nueva');
-    toast('Proforma N° '+numProforma+' cargada desde local','ok');
+    toast('Proforma N° '+numProforma+' cargada','ok');
     return;
   }
   
-  // Si no está en local, descargar del Sheet
+  // Si no está en local, reconstruir desde los datos de Pedidos del Sheet
+  toast('⏳ Reconstruyendo proforma...','ok');
   try{
-    const json=await fetchScript('action=readPF');
-    if(json&&json.ok&&json.data&&json.data.length){
-      const spf=json.data.find(p=>String(p.num)===String(numProforma));
-      if(spf){
-        // Agregar a proformas locales
-        proformas.push(spf);
-        if(spf.num>=nextNum) nextNum=spf.num+1;
-        savePF();
-        
-        // Cargar para editar
-        recuperarPF(spf.id);
-        pfActual.editMode=true;
-        goPage('nueva');
-        toast('✅ Proforma N° '+numProforma+' descargada y cargada','ok');
-        return;
+    let pedidos=[];
+    const json=await fetchScript('action=read');
+    if(json&&json.ok&&json.data){
+      pedidos=json.data.filter(p=>String(p.Proforma)===String(numProforma));
+    }
+    if(!pedidos.length){
+      // Fallback: API pública
+      const SHEET_ID='1Uyf-KGoF9MbGXL2YH-Scrnc0AP2uk6mIF-TnXYDl754';
+      const vizUrl=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Pedidos`;
+      const resp=await fetch(vizUrl);
+      const text=await resp.text();
+      const match=text.match(/google\.visualization\.Query\.setResponse\((.+)\)/);
+      if(match){
+        const gdata=JSON.parse(match[1]);
+        if(gdata.table&&gdata.table.rows&&gdata.table.cols){
+          const cols=gdata.table.cols.map(c=>c.label);
+          pedidos=gdata.table.rows.map(r=>{
+            const obj={};
+            (r.c||[]).forEach((cell,i)=>{ if(cols[i]) obj[cols[i]]=cell?(cell.f||cell.v||''):''; });
+            return obj;
+          }).filter(p=>String(p.Proforma)===String(numProforma));
+        }
       }
     }
-  }catch(e){ console.warn('Error descargando PF:',e); }
-  
-  toast('No se encontró la proforma N° '+numProforma+' en el servidor','err');
+    
+    if(!pedidos.length){
+      toast('No se encontraron datos del pedido N° '+numProforma,'err');
+      return;
+    }
+    
+    // Reconstruir proforma desde datos de pedidos
+    const p0=pedidos[0];
+    const vehParts=(p0['Vehículo']||p0.Vehiculo||'').split(' ');
+    const pf={
+      id:'pf_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),
+      num:parseInt(numProforma)||0,
+      fecha:p0.Fecha||new Date().toISOString().slice(0,10),
+      vence:'',
+      vendedor:p0.Vendedor||'',
+      cli:{nom:p0.Cliente||'',tel:'',rtn:'',dir:''},
+      veh:{placa:p0.Placa||'',ma:vehParts[0]||'',mo:vehParts.slice(1).join(' ')||'',a:'',km:''},
+      prods:[],
+      servs:[],
+      moneda:'HNL',
+      descuento:0,
+      notas:'',
+      ganGlobal:30,
+      estado:'autorizado',
+      sub:0,
+      total:0
+    };
+    
+    pedidos.forEach(ped=>{
+      const precioStr=String(ped.Precio||'0').replace(/[^\d.]/g,'');
+      const precio=parseFloat(precioStr)||0;
+      const cant=parseFloat(ped.Cantidad)||1;
+      const tipo=(ped.Tipo||'Producto').toLowerCase();
+      
+      const item={
+        desc:ped.Repuesto||'',
+        cod:'',
+        precio:precio,
+        costo:0,
+        ganancia:0,
+        cantidad:cant,
+        isv:tipo==='servicio'?0:15,
+        deOrden:null
+      };
+      
+      if(tipo==='servicio') pf.servs.push(item);
+      else pf.prods.push(item);
+    });
+    
+    // Calcular totales
+    const todos=[...pf.prods,...pf.servs];
+    pf.sub=todos.reduce((s,it)=>s+it.precio*it.cantidad,0);
+    pf.total=todos.reduce((s,it)=>s+it.precio*(1+(it.isv||0)/100)*it.cantidad,0);
+    
+    // Agregar a proformas locales
+    proformas.push(pf);
+    if(pf.num>=nextNum) nextNum=pf.num+1;
+    savePF();
+    
+    // Cargar para editar
+    recuperarPF(pf.id);
+    pfActual.editMode=true;
+    goPage('nueva');
+    toast('✅ Proforma N° '+numProforma+' reconstruida desde pedidos','ok');
+    
+  }catch(e){
+    console.warn('Error reconstruyendo PF:',e);
+    toast('Error al recuperar proforma — intenta de nuevo','err');
+  }
 }
 
 async function agregarProductoPedido(num,cliente,vehiculo,placa,fecha,vendedor){
