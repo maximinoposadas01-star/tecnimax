@@ -949,13 +949,19 @@ function onPlaca(val){
   const sug=document.getElementById('sug-placa');
   if(!val||val.length<2){sug.style.display='none';return;}
   const vl=val.toLowerCase();
-  const matches=proformas.filter(p=>p.estado==='pend'&&(p.veh.placa||'').toLowerCase().includes(vl));
+  // Buscar en todas las proformas (pendientes, autorizadas, archivadas)
+  const matches=proformas.filter(p=>(p.veh.placa||'').toLowerCase().includes(vl));
   if(!matches.length){sug.style.display='none';return;}
-  sug.innerHTML=matches.map(p=>`
-    <div class="si" onclick="recuperarPF('${p.id}')">
+  // Ordenar: pendientes primero, luego autorizadas, luego archivadas
+  const prioridad={pend:0,autorizado:1,hist:2};
+  matches.sort((a,b)=>(prioridad[a.estado]||3)-(prioridad[b.estado]||3));
+  sug.innerHTML=matches.slice(0,8).map(p=>{
+    const est=p.estado==='pend'?'⏳ Pendiente':p.estado==='autorizado'?'✅ Autorizada':'📁 Archivada';
+    return `<div class="si" onclick="recuperarPF('${p.id}')">
       <b>Placa: ${p.veh.placa}</b> — ${p.veh.ma||''} ${p.veh.mo||''} ${p.veh.a||''}
-      <small>N°${p.num} · ${p.cli.nom||'Sin nombre'} · ${fFecha(p.fecha)}</small>
-    </div>`).join('');
+      <small>N°${p.num} · ${p.cli.nom||'Sin nombre'} · ${fFecha(p.fecha)} · ${est}</small>
+    </div>`;
+  }).join('');
   sug.style.display='block';
 }
 
@@ -1886,43 +1892,47 @@ function cargarConfig(){
 }
 
 // Escribir pedido en Google Sheets
-// Si reemplazar=true, solo agrega items NUEVOS que no existen en el Sheet
+// Si reemplazar=true, borra items viejos y reescribe conservando estados
 async function enviarASheet(pf, reemplazar){
   const fecha=new Date().toISOString().slice(0,10);
   const veh=[pf.veh.ma,pf.veh.mo,pf.veh.a].filter(Boolean).join(' ');
   const mon=pf.moneda==='USD'?'$':'L';
   
-  // Si es reemplazo (edición de autorizada), leer items actuales para no duplicar
-  let existentes=new Set();
+  // Si es reemplazo, leer estados actuales antes de borrar
+  let estadosPrevios={};
   if(reemplazar){
     try{
       const json=await fetchScript('action=read');
       if(json&&json.ok&&json.data){
         json.data.filter(p=>String(p.Proforma)===String(pf.num)).forEach(p=>{
-          existentes.add((p.Repuesto||'').trim().toUpperCase());
+          const key=(p.Repuesto||'').trim().toUpperCase();
+          estadosPrevios[key]={estado:p.Estado||'Pendiente', nota:p.Notas||''};
         });
       }
+    }catch(e){}
+    
+    // Borrar items viejos
+    try{
+      await fetchScript('action=deleteByProforma&proforma='+encodeURIComponent(pf.num));
+      await new Promise(r=>setTimeout(r,2000));
     }catch(e){}
   }
   
   const rows=[];
   pf.prods.forEach(p=>{
     const key=p.desc.trim().toUpperCase();
-    if(reemplazar && existentes.has(key)) return; // Ya existe, no duplicar
+    const prev=estadosPrevios[key]||{};
     rows.push([pf.num, fecha, pf.vendedor||'', pf.cli.nom||'', veh, pf.veh.placa||'',
-               'Producto', p.desc, p.cantidad, mon+' '+fmt(p.precio), 'Pendiente','']);
+               'Producto', p.desc, p.cantidad, mon+' '+fmt(p.precio), prev.estado||'Pendiente', prev.nota||'']);
   });
   pf.servs.forEach(s=>{
     const key=s.desc.trim().toUpperCase();
-    if(reemplazar && existentes.has(key)) return; // Ya existe, no duplicar
+    const prev=estadosPrevios[key]||{};
     rows.push([pf.num, fecha, pf.vendedor||'', pf.cli.nom||'', veh, pf.veh.placa||'',
-               'Servicio', s.desc, s.cantidad, mon+' '+fmt(s.precio), 'Pendiente','']);
+               'Servicio', s.desc, s.cantidad, mon+' '+fmt(s.precio), prev.estado||'Pendiente', prev.nota||'']);
   });
   
-  if(!rows.length){ 
-    if(reemplazar) toast('Sin items nuevos para agregar','ok');
-    return rows; 
-  }
+  if(!rows.length){ console.warn('enviarASheet: sin items para enviar'); return rows; }
   
   try{
     await fetch(SCRIPT_URL+'?action=write',{
