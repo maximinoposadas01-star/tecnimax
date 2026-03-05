@@ -1759,7 +1759,22 @@ async function generarPDF(pf){
 // ══════════════════════════════════════════
 function fmt(n){ return (n||0).toLocaleString('es-HN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function esc(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-function fFecha(f){ if(!f)return'—'; try{ if(f.includes('-')){const[y,m,d]=f.split('-');return`${d}-${m}-${y}`;} }catch(e){} return f; }
+function fFecha(f){ 
+  if(!f)return'—'; 
+  try{ 
+    // Si es Date object o string con formato raro, convertir
+    if(f instanceof Date || (typeof f==='string' && f.length>10 && !f.match(/^\d{4}-\d{2}-\d{2}$/))){
+      const d=new Date(f);
+      if(!isNaN(d)){
+        const dd=String(d.getDate()).padStart(2,'0');
+        const mm=String(d.getMonth()+1).padStart(2,'0');
+        return `${dd}-${mm}-${d.getFullYear()}`;
+      }
+    }
+    if(typeof f==='string' && f.includes('-')){const[y,m,d]=f.split('-');return`${d}-${m}-${y}`;} 
+  }catch(e){} 
+  return String(f); 
+}
 function cerrarModal(id){ document.getElementById(id).classList.remove('on'); }
 
 document.addEventListener('click',e=>{
@@ -2208,10 +2223,28 @@ async function recuperarPFdeSheet(numProforma){
       }
     }
     
+    // Normalizar fecha del Sheet (puede venir como Date object, string raro, etc)
+    let fechaStr='';
+    try{
+      const rawF=p0.Fecha||'';
+      if(rawF instanceof Date){
+        fechaStr=rawF.toISOString().slice(0,10);
+      } else if(typeof rawF==='string' && rawF.match(/^\d{4}-\d{2}-\d{2}/)){
+        fechaStr=rawF.slice(0,10);
+      } else if(typeof rawF==='string' && rawF.match(/^\d{2}-\d{2}-\d{4}/)){
+        const[d,m,y]=rawF.split('-');
+        fechaStr=`${y}-${m}-${d}`;
+      } else if(rawF){
+        const d=new Date(rawF);
+        if(!isNaN(d)) fechaStr=d.toISOString().slice(0,10);
+      }
+    }catch(e){}
+    if(!fechaStr) fechaStr=new Date().toISOString().slice(0,10);
+    
     const pf={
       id:'pf_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),
       num:parseInt(numProforma)||0,
-      fecha:p0.Fecha||new Date().toISOString().slice(0,10),
+      fecha:fechaStr,
       vence:'',
       vendedor:p0.Vendedor||'',
       cli:{nom:p0.Cliente||'',tel:'',rtn:'',dir:''},
