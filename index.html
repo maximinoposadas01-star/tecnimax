@@ -2094,6 +2094,7 @@ async function cargarPedidos(){
           } else {
             compraHtml=`<div style="font-size:9px;color:var(--mu);font-style:italic">Sin datos de compra</div>`;
           }
+          const notaHtml=it.nota?`<div style="font-size:10px;color:var(--bl);margin-top:2px;font-weight:500">📝 ${it.nota}</div>`:'';
           const bgColor=esLlego?'#f0faf0':esPedido?'#fff8e6':'';
           const borderColor=esLlego?'var(--gr)':esPedido?'#f0ad4e':'var(--b1)';
           return `<div class="ped-item-row" onclick="avanzarEstado('${g.num}','${esc(it.desc)}',this)" 
@@ -2116,7 +2117,10 @@ async function cargarPedidos(){
               </div>
               <div style="font-size:10px;color:var(--mu)">${it.cant} unid · ${it.precio}</div>
               ${compraHtml}
+              ${notaHtml}
             </div>
+            <button onclick="event.stopPropagation();agregarNota('${g.num}','${esc(it.desc)}',this)" 
+              style="background:none;border:1px solid var(--b1);border-radius:6px;padding:4px 8px;font-size:10px;cursor:pointer;flex-shrink:0;color:var(--mu)">📝</button>
           </div>`;
         }).join('')}
         <div style="padding:8px 0 2px;text-align:center;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
@@ -2411,6 +2415,40 @@ async function avanzarEstado(proforma, repuesto, el){
   }
 }
 
+
+// Agregar nota a un item del pedido
+async function agregarNota(proforma, repuesto, btn){
+  const rep=repuesto.replace(/\\'/g,"'");
+  const nota=prompt('Nota (ej: Pedido a JC Repuestos 2pm):');
+  if(nota===null) return;
+  
+  // Actualizar UI
+  const row=btn.closest('.ped-item-row');
+  if(row){
+    let notaDiv=row.querySelector('.nota-ped');
+    if(nota.trim()){
+      if(!notaDiv){
+        notaDiv=document.createElement('div');
+        notaDiv.className='nota-ped';
+        notaDiv.style.cssText='font-size:10px;color:var(--bl);margin-top:2px;font-weight:500';
+        const contentDiv=row.querySelector('div:nth-child(2)');
+        if(contentDiv) contentDiv.appendChild(notaDiv);
+      }
+      notaDiv.textContent='📝 '+nota.trim();
+    } else if(notaDiv){
+      notaDiv.remove();
+    }
+  }
+  
+  // Guardar en Sheet
+  const params='action=updateNota&proforma='+encodeURIComponent(proforma)+'&repuesto='+encodeURIComponent(rep)+'&nota='+encodeURIComponent(nota.trim());
+  try{
+    await fetchScript(params);
+    toast('Nota guardada','ok');
+  }catch(e){
+    toast('Nota guardada local (sin conexión)','ok');
+  }
+}
 
 function actualizarProgresoCard(el, proforma){
   const card=el.closest('.ped-card');
