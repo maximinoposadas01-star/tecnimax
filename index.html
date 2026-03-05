@@ -1400,7 +1400,7 @@ function guardarPF(){
   
   // Si es autorizada, actualizar directo en el Sheet sin pedir autorización
   if(esAutorizada){
-    enviarASheet(pf);
+    enviarASheet(pf, true); // reemplazar=true → borra items viejos primero
     syncPFtoSheet(pf);
     document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
     document.getElementById('pf-title').textContent='Modificar Proforma';
@@ -1864,7 +1864,8 @@ function cargarConfig(){
 }
 
 // Escribir pedido en Google Sheets
-async function enviarASheet(pf){
+// Si reemplazar=true, primero borra los items existentes de esa proforma
+async function enviarASheet(pf, reemplazar){
   const fecha=new Date().toISOString().slice(0,10);
   const veh=[pf.veh.ma,pf.veh.mo,pf.veh.a].filter(Boolean).join(' ');
   const mon=pf.moneda==='USD'?'$':'L';
@@ -1881,6 +1882,13 @@ async function enviarASheet(pf){
   if(!rows.length){ console.warn('enviarASheet: sin items para enviar'); return rows; }
   
   try{
+    // Si es reemplazo, borrar items viejos de esta proforma primero
+    if(reemplazar){
+      // Usar GET (fetchScript) que sí sigue redirects de Google
+      await fetchScript('action=deleteByProforma&proforma='+encodeURIComponent(pf.num));
+      // Esperar a que Google procese el borrado
+      await new Promise(r=>setTimeout(r,2000));
+    }
     await fetch(SCRIPT_URL+'?action=write',{
       method:'POST', mode:'no-cors',
       headers:{'Content-Type':'text/plain'},
