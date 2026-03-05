@@ -2119,7 +2119,6 @@ async function cargarPedidos(){
             </div>
           </div>`;
         }).join('')}
-        }).join('')}
         <div style="padding:8px 0 2px;text-align:center;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
           <button class="btn bgh bsm" onclick="event.stopPropagation();recuperarPFdeSheet('${g.num}')" style="font-size:11px">📋 Ver Proforma</button>
           <button class="btn bgh bsm" onclick="event.stopPropagation();agregarProductoPedido('${g.num}','${esc(g.cliente)}','${esc(g.vehiculo)}','${esc(g.placa)}','${g.fecha||''}','${esc(g.vendedor||'')}')" style="font-size:11px">＋ Agregar repuesto</button>
