@@ -2053,8 +2053,15 @@ async function cargarPedidos(){
     const g=grupos[k];
     const total=g.items.length;
     const nLlego=g.items.filter(it=>it.estado==='Llegó').length;
+    const nPedido=g.items.filter(it=>it.estado==='Pedido').length;
     const todosResueltos=total>0&&nLlego===total;
-    const progreso=todosResueltos?`<span style="color:var(--gr);font-weight:700">✓ Todos llegaron</span>`:`<span style="color:var(--mu)">${nLlego}/${total} llegaron</span>`;
+    let progreso='';
+    if(todosResueltos) progreso=`<span style="color:var(--gr);font-weight:700">✓ Todos llegaron</span>`;
+    else {
+      progreso=`<span style="color:var(--mu)">${nLlego}/${total} llegaron`;
+      if(nPedido>0) progreso+=` · ${nPedido} pedidos`;
+      progreso+=`</span>`;
+    }
     
     return `<div class="ped-card" style="padding:0;${todosResueltos?'border-color:var(--gr);background:#f0faf0':''}">
       <div class="ped-row" onclick="togglePed(this)" style="display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;user-select:none">
@@ -2072,7 +2079,9 @@ async function cargarPedidos(){
       </div>
       <div class="ped-body" style="display:none;border-top:1px solid var(--b1);padding:6px 14px 10px">
         ${g.items.map((it,idx)=>{
-          const llegó=it.estado==='Llegó';
+          const estado=it.estado||'Pendiente';
+          const esPedido=estado==='Pedido';
+          const esLlego=estado==='Llegó';
           const compraInfo=buscarCompra(it.desc);
           let compraHtml='';
           if(compraInfo&&compraInfo.length){
@@ -2085,15 +2094,31 @@ async function cargarPedidos(){
           } else {
             compraHtml=`<div style="font-size:9px;color:var(--mu);font-style:italic">Sin datos de compra</div>`;
           }
-          return `<label class="ped-chk" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--b1);cursor:pointer;${llegó?'opacity:.6':''}">
-            <input type="checkbox" ${llegó?'checked':''} style="width:20px;height:20px;accent-color:var(--gr);flex-shrink:0"
-              onchange="cambiarEstadoSheet('${g.num}','${esc(it.desc)}',this.checked?'Llegó':'Pendiente',this)">
+          const bgColor=esLlego?'#f0faf0':esPedido?'#fff8e6':'';
+          const borderColor=esLlego?'var(--gr)':esPedido?'#f0ad4e':'var(--b1)';
+          return `<div class="ped-item-row" onclick="avanzarEstado('${g.num}','${esc(it.desc)}',this)" 
+            data-estado="${estado}"
+            style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--b1);cursor:pointer;user-select:none;
+            ${esLlego?'opacity:.5':''}">
+            <div style="width:28px;height:28px;border-radius:50%;border:2px solid ${borderColor};flex-shrink:0;
+              display:flex;align-items:center;justify-content:center;font-size:14px;
+              background:${esLlego?'var(--gr)':esPedido?'#f0ad4e':'transparent'};
+              color:${esLlego||esPedido?'#fff':'var(--mu)'}">
+              ${esLlego?'✓':esPedido?'📦':''}
+            </div>
             <div style="flex:1;min-width:0">
-              <div style="font-weight:600;font-size:12px;${llegó?'text-decoration:line-through':''}">${it.desc}</div>
+              <div style="font-weight:600;font-size:12px;${esLlego||esPedido?'text-decoration:line-through':''}">
+                ${it.desc}
+                <span style="font-size:10px;font-weight:700;margin-left:6px;
+                  color:${esLlego?'var(--gr)':esPedido?'#d48800':'var(--mu)'}">
+                  ${esLlego?'LLEGÓ':esPedido?'PEDIDO':'PENDIENTE'}
+                </span>
+              </div>
               <div style="font-size:10px;color:var(--mu)">${it.cant} unid · ${it.precio}</div>
               ${compraHtml}
             </div>
-          </label>`;
+          </div>`;
+        }).join('')}
         }).join('')}
         <div style="padding:8px 0 2px;text-align:center;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
           <button class="btn bgh bsm" onclick="event.stopPropagation();recuperarPFdeSheet('${g.num}')" style="font-size:11px">📋 Ver Proforma</button>
@@ -2328,46 +2353,62 @@ async function agregarProductoPedido(num,cliente,vehiculo,placa,fecha,vendedor){
   }
 }
 
-async function cambiarEstadoSheet(proforma,repuesto,estado,el){
+// Avanzar estado: Pendiente → Pedido → Llegó (un toque cada vez)
+async function avanzarEstado(proforma, repuesto, el){
   const rep=repuesto.replace(/\\'/g,"'");
-
-  // Actualizar UI inmediatamente (optimista) sin esperar al servidor
-  if(el){
-    const label=el.closest('label');
-    if(label){
-      label.style.opacity=estado==='Llegó'?'0.6':'1';
-      const descDiv=label.querySelector('div div');
-      if(descDiv) descDiv.style.textDecoration=estado==='Llegó'?'line-through':'none';
-    }
-    actualizarProgresoCard(el, proforma);
+  const actual=el.getAttribute('data-estado')||'Pendiente';
+  let nuevo='Pendiente';
+  if(actual==='Pendiente') nuevo='Pedido';
+  else if(actual==='Pedido') nuevo='Llegó';
+  else nuevo='Llegó'; // Ya está en Llegó, no retrocede
+  
+  if(actual==='Llegó') return; // Ya finalizado, no hacer nada
+  
+  // Actualizar UI inmediatamente
+  el.setAttribute('data-estado',nuevo);
+  const esPedido=nuevo==='Pedido';
+  const esLlego=nuevo==='Llegó';
+  
+  // Actualizar círculo
+  const circle=el.querySelector('div:first-child');
+  if(circle){
+    circle.style.borderColor=esLlego?'var(--gr)':esPedido?'#f0ad4e':'var(--b1)';
+    circle.style.background=esLlego?'var(--gr)':esPedido?'#f0ad4e':'transparent';
+    circle.style.color=esLlego||esPedido?'#fff':'var(--mu)';
+    circle.textContent=esLlego?'✓':esPedido?'📦':'';
   }
-
-  // Enviar al servidor en background
-  const params='action=updateEstado&proforma='+encodeURIComponent(proforma)+'&repuesto='+encodeURIComponent(rep)+'&estado='+encodeURIComponent(estado);
+  
+  // Actualizar texto
+  el.style.opacity=esLlego?'0.5':'1';
+  const descDiv=el.querySelector('div:nth-child(2) > div:first-child');
+  if(descDiv){
+    descDiv.style.textDecoration=esLlego||esPedido?'line-through':'none';
+    const badge=descDiv.querySelector('span');
+    if(badge){
+      badge.textContent=esLlego?'LLEGÓ':esPedido?'PEDIDO':'PENDIENTE';
+      badge.style.color=esLlego?'var(--gr)':esPedido?'#d48800':'var(--mu)';
+    }
+  }
+  
+  actualizarProgresoCard(el, proforma);
+  
+  // Enviar al servidor
+  const params='action=updateEstado&proforma='+encodeURIComponent(proforma)+'&repuesto='+encodeURIComponent(rep)+'&estado='+encodeURIComponent(nuevo);
   try{
     const json=await fetchScript(params);
     if(json&&json.ok){
-      toast(estado==='Llegó'?'✅ Llegó':'⬜ Pendiente','ok');
+      toast(esLlego?'✅ Llegó':esPedido?'📦 Pedido':'⬜ Pendiente','ok');
     } else {
       // Revertir si falló
-      if(el){
-        el.checked=estado!=='Llegó';
-        const label=el.closest('label');
-        if(label){
-          label.style.opacity=estado!=='Llegó'?'0.6':'1';
-          const descDiv=label.querySelector('div div');
-          if(descDiv) descDiv.style.textDecoration=estado!=='Llegó'?'line-through':'none';
-        }
-        actualizarProgresoCard(el, proforma);
-      }
+      el.setAttribute('data-estado',actual);
       toast('Error al guardar — reintenta','err');
+      // Recargar pedidos para estado correcto
+      setTimeout(()=>cargarPedidos(),1000);
     }
   }catch(e){
     toast('Error de conexión','err');
-    if(el){
-      el.checked=estado!=='Llegó';
-      actualizarProgresoCard(el, proforma);
-    }
+    el.setAttribute('data-estado',actual);
+    setTimeout(()=>cargarPedidos(),1000);
   }
 }
 
@@ -2377,10 +2418,14 @@ function actualizarProgresoCard(el, proforma){
   if(!card) return;
   const body=card.querySelector('.ped-body');
   if(!body) return;
-  const checks=body.querySelectorAll('input[type=checkbox]');
-  const total=checks.length;
-  let nLlego=0;
-  checks.forEach(function(cb){ if(cb.checked) nLlego++; });
+  const items=body.querySelectorAll('.ped-item-row');
+  const total=items.length;
+  let nLlego=0, nPedido=0;
+  items.forEach(function(it){ 
+    const est=it.getAttribute('data-estado')||'Pendiente';
+    if(est==='Llegó') nLlego++;
+    else if(est==='Pedido') nPedido++;
+  });
   const todosResueltos=total>0&&nLlego===total;
   const headerRow=card.querySelector('.ped-row');
   if(!headerRow) return;
@@ -2389,7 +2434,10 @@ function actualizarProgresoCard(el, proforma){
     if(todosResueltos){
       progresoDiv.innerHTML='<span style="color:var(--gr);font-weight:700">✓ Todos llegaron</span>';
     } else {
-      progresoDiv.innerHTML='<span style="color:var(--mu)">'+nLlego+'/'+total+' llegaron</span>';
+      let txt=`<span style="color:var(--mu)">${nLlego}/${total} llegaron`;
+      if(nPedido>0) txt+=` · ${nPedido} pedidos`;
+      txt+='</span>';
+      progresoDiv.innerHTML=txt;
     }
   }
   if(todosResueltos){
