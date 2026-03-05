@@ -1385,8 +1385,16 @@ function guardarPF(){
   const existente=pfActual.id?proformas.find(p=>p.id===pfActual.id):null;
   const vendedor=document.getElementById('pf-vend').value.trim();
   const pref=prefVendedor(vendedor);
-  // Si es nueva, generar número con prefijo; si existe, mantener el que tiene
-  const num=existente?existente.num:(pref?pref+'-'+nextNum:String(nextNum));
+  let num;
+  if(existente){
+    // Si ya tiene prefijo, mantenerlo. Si no tiene y hay vendedor, agregarlo
+    const yaConPrefijo=/^[A-Z]+-\d/.test(String(existente.num));
+    if(yaConPrefijo) num=existente.num;
+    else if(pref) num=pref+'-'+existente.num;
+    else num=existente.num;
+  } else {
+    num=pref?pref+'-'+nextNum:String(nextNum);
+  }
   // Mantener estado autorizado si ya estaba autorizado
   const estadoActual=existente?existente.estado:'pend';
   const esAutorizada=estadoActual==='autorizado';
