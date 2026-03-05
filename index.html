@@ -1461,6 +1461,11 @@ function recuperarPF(id){
   // Si estaba archivada, volver a pendiente
   if(pf.estado==='hist') { pf.estado='pend'; savePF(); }
   document.getElementById('sug-placa').style.display='none';
+  // Asegurar que prods/servs/cli/veh existan
+  if(!pf.prods) pf.prods=[];
+  if(!pf.servs) pf.servs=[];
+  if(!pf.cli) pf.cli={nom:'',tel:'',rtn:'',dir:''};
+  if(!pf.veh) pf.veh={placa:'',ma:'',mo:'',a:'',km:''};
   pfActual={id:pf.id,editMode:true,prods:[...pf.prods],servs:[...pf.servs]};
   document.getElementById('cli-nom').value   =pf.cli.nom||'';
   document.getElementById('veh-placa').value =pf.veh.placa||'';
