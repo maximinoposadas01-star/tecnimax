@@ -2153,17 +2153,31 @@ async function recuperarPFdeSheet(numProforma){
     // Buscar marca/modelo/año en la DB local usando la placa
     let ma='', mo='', a='';
     if(placa){
+      // 1. Buscar en órdenes por placa
       const ords=Object.values(DB.ordenes);
       for(let i=0;i<ords.length;i++){
-        if((ords[i].pl||'').toUpperCase()===placa){
+        const opl=(ords[i].pl||'').toUpperCase().replace(/[\s\-]/g,'');
+        if(opl && opl===placa.replace(/[\s\-]/g,'')){
           ma=ords[i].ma||'';
           mo=ords[i].mo||'';
           a=ords[i].a||'';
           break;
         }
       }
+      // 2. Si no encontró, buscar en proformas existentes por placa
+      if(!ma){
+        for(let i=0;i<proformas.length;i++){
+          const ppl=(proformas[i].veh.placa||'').toUpperCase().replace(/[\s\-]/g,'');
+          if(ppl && ppl===placa.replace(/[\s\-]/g,'') && proformas[i].veh.ma){
+            ma=proformas[i].veh.ma;
+            mo=proformas[i].veh.mo||'';
+            a=proformas[i].veh.a||'';
+            break;
+          }
+        }
+      }
     }
-    // Si no encontró por placa, intentar separar del campo Vehículo
+    // 3. Si no encontró por placa, separar del campo Vehículo usando las marcas conocidas
     if(!ma){
       const vehStr=(p0['Vehículo']||p0.Vehiculo||'').trim();
       // Buscar en DB.marcas la marca que coincida al inicio
