@@ -1864,21 +1864,20 @@ function cargarConfig(){
 }
 
 // Escribir pedido en Google Sheets
-// Si reemplazar=true, primero lee estados actuales, borra y reescribe conservando estados
+// Si reemplazar=true, solo agrega items NUEVOS que no existen en el Sheet
 async function enviarASheet(pf, reemplazar){
   const fecha=new Date().toISOString().slice(0,10);
   const veh=[pf.veh.ma,pf.veh.mo,pf.veh.a].filter(Boolean).join(' ');
   const mon=pf.moneda==='USD'?'$':'L';
   
-  // Si es reemplazo, leer estados actuales del Sheet antes de borrar
-  let estadosPrevios={};
+  // Si es reemplazo (edición de autorizada), leer items actuales para no duplicar
+  let existentes=new Set();
   if(reemplazar){
     try{
       const json=await fetchScript('action=read');
       if(json&&json.ok&&json.data){
         json.data.filter(p=>String(p.Proforma)===String(pf.num)).forEach(p=>{
-          const key=(p.Repuesto||'').trim().toUpperCase();
-          estadosPrevios[key]={estado:p.Estado||'Pendiente', nota:p.Notas||''};
+          existentes.add((p.Repuesto||'').trim().toUpperCase());
         });
       }
     }catch(e){}
@@ -1887,24 +1886,23 @@ async function enviarASheet(pf, reemplazar){
   const rows=[];
   pf.prods.forEach(p=>{
     const key=p.desc.trim().toUpperCase();
-    const prev=estadosPrevios[key]||{};
+    if(reemplazar && existentes.has(key)) return; // Ya existe, no duplicar
     rows.push([pf.num, fecha, pf.vendedor||'', pf.cli.nom||'', veh, pf.veh.placa||'',
-               'Producto', p.desc, p.cantidad, mon+' '+fmt(p.precio), prev.estado||'Pendiente', prev.nota||'']);
+               'Producto', p.desc, p.cantidad, mon+' '+fmt(p.precio), 'Pendiente','']);
   });
   pf.servs.forEach(s=>{
     const key=s.desc.trim().toUpperCase();
-    const prev=estadosPrevios[key]||{};
+    if(reemplazar && existentes.has(key)) return; // Ya existe, no duplicar
     rows.push([pf.num, fecha, pf.vendedor||'', pf.cli.nom||'', veh, pf.veh.placa||'',
-               'Servicio', s.desc, s.cantidad, mon+' '+fmt(s.precio), prev.estado||'Pendiente', prev.nota||'']);
+               'Servicio', s.desc, s.cantidad, mon+' '+fmt(s.precio), 'Pendiente','']);
   });
   
-  if(!rows.length){ console.warn('enviarASheet: sin items para enviar'); return rows; }
+  if(!rows.length){ 
+    if(reemplazar) toast('Sin items nuevos para agregar','ok');
+    return rows; 
+  }
   
   try{
-    if(reemplazar){
-      await fetchScript('action=deleteByProforma&proforma='+encodeURIComponent(pf.num));
-      await new Promise(r=>setTimeout(r,2000));
-    }
     await fetch(SCRIPT_URL+'?action=write',{
       method:'POST', mode:'no-cors',
       headers:{'Content-Type':'text/plain'},
