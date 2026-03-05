@@ -1382,7 +1382,7 @@ function prefVendedor(nombre){
   return partes.map(p=>p[0]).join('').substring(0,3);
 }
 
-function guardarPF(){
+async function guardarPF(){
   const nom  =document.getElementById('cli-nom').value.trim();
   const placa=document.getElementById('veh-placa').value.trim();
   if(!nom&&!placa){ toast('Ingresa al menos nombre del cliente o placa','err'); return null; }
@@ -1430,10 +1430,16 @@ function guardarPF(){
   
   // Si es autorizada, actualizar directo en el Sheet sin pedir autorización
   if(esAutorizada){
-    enviarASheet(pf, true); // reemplazar=true → borra items viejos primero
-    syncPFtoSheet(pf);
     document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
     document.getElementById('pf-title').textContent='Modificar Proforma';
+    toast(`⏳ Actualizando pedido N° ${pf.num}...`,'ok');
+    
+    // Esperar a que se complete todo el proceso
+    await enviarASheet(pf, true);
+    syncPFtoSheet(pf);
+    
+    // Esperar extra para que Google procese
+    await new Promise(r=>setTimeout(r,3000));
     toast(`✅ Proforma N° ${pf.num} actualizada en pedidos`,'ok');
   } else {
     document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
@@ -1446,8 +1452,8 @@ function guardarPF(){
 // ══════════════════════════════════════════
 //  IMPRIMIR → PDF → luego limpia
 // ══════════════════════════════════════════
-function imprimirPF(){
-  const pf=guardarPF(); if(!pf) return;
+async function imprimirPF(){
+  const pf=await guardarPF(); if(!pf) return;
   generarPDF(pf);
   savePF(); updStats();
   toast('✅ PDF generado','ok');
@@ -1931,7 +1937,7 @@ async function enviarASheet(pf, reemplazar){
       if(numSinPrefijo!==String(pf.num)){
         await fetchScript('action=deleteByProforma&proforma='+encodeURIComponent(numSinPrefijo));
       }
-      await new Promise(r=>setTimeout(r,2000));
+      await new Promise(r=>setTimeout(r,3000));
     }catch(e){}
   }
   
@@ -1957,6 +1963,8 @@ async function enviarASheet(pf, reemplazar){
       headers:{'Content-Type':'text/plain'},
       body:JSON.stringify({rows})
     });
+    // Esperar a que Google procese la escritura
+    await new Promise(r=>setTimeout(r,2000));
   }catch(e){ console.warn('Error escribiendo en Sheets:',e); }
   return rows;
 }
