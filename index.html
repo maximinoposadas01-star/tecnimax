@@ -1393,11 +1393,13 @@ function guardarPF(){
   const pref=prefVendedor(vendedor);
   let num;
   if(existente){
-    // Si ya tiene prefijo, mantenerlo. Si no tiene y hay vendedor, agregarlo
-    const yaConPrefijo=/^[A-Z]+-\d/.test(String(existente.num));
-    if(yaConPrefijo) num=existente.num;
-    else if(pref) num=pref+'-'+existente.num;
-    else num=existente.num;
+    // Para proformas autorizadas, NUNCA cambiar el número (el Sheet ya lo tiene así)
+    num=existente.num;
+    // Solo agregar prefijo a pendientes que no lo tienen
+    if(existente.estado==='pend'){
+      const yaConPrefijo=/^[A-Z]+-\d/.test(String(existente.num));
+      if(!yaConPrefijo && pref) num=pref+'-'+existente.num;
+    }
   } else {
     num=pref?pref+'-'+nextNum:String(nextNum);
   }
@@ -1909,16 +1911,26 @@ async function enviarASheet(pf, reemplazar){
     try{
       const json=await fetchScript('action=read');
       if(json&&json.ok&&json.data){
-        json.data.filter(p=>String(p.Proforma)===String(pf.num)).forEach(p=>{
+        json.data.filter(p=>{
+          const pNum=String(p.Proforma);
+          const numStr=String(pf.num);
+          const numSinPref=numStr.replace(/^[A-Z]+-/i,'');
+          return pNum===numStr || pNum===numSinPref;
+        }).forEach(p=>{
           const key=(p.Repuesto||'').trim().toUpperCase();
           estadosPrevios[key]={estado:p.Estado||'Pendiente', nota:p.Notas||''};
         });
       }
     }catch(e){}
     
-    // Borrar items viejos
+    // Borrar items viejos — intentar con el número tal cual y sin prefijo
     try{
       await fetchScript('action=deleteByProforma&proforma='+encodeURIComponent(pf.num));
+      // También borrar por número sin prefijo por si el Sheet tiene el viejo
+      const numSinPrefijo=String(pf.num).replace(/^[A-Z]+-/i,'');
+      if(numSinPrefijo!==String(pf.num)){
+        await fetchScript('action=deleteByProforma&proforma='+encodeURIComponent(numSinPrefijo));
+      }
       await new Promise(r=>setTimeout(r,2000));
     }catch(e){}
   }
