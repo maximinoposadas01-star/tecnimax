@@ -1373,10 +1373,13 @@ function guardarPF(){
   const tots=recalc();
   const existente=pfActual.id?proformas.find(p=>p.id===pfActual.id):null;
   const num=existente?existente.num:nextNum;
+  // Mantener estado autorizado si ya estaba autorizado
+  const estadoActual=existente?existente.estado:'pend';
+  const esAutorizada=estadoActual==='autorizado';
   const pf={
     id:   pfActual.id||(Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
     num,
-    estado:'pend',
+    estado:esAutorizada?'autorizado':'pend',
     fecha: document.getElementById('pf-fecha').value,
     vence: document.getElementById('pf-vence').value,
     vendedor:document.getElementById('pf-vend').value,
@@ -1394,10 +1397,19 @@ function guardarPF(){
   else{ proformas.unshift(pf); nextNum++; }
   pfActual.id=pf.id; pfActual.editMode=true;
   savePF(); updStats();
-  // syncPFtoSheet desactivado — solo se sincroniza al autorizar
-  document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
-  document.getElementById('pf-title').textContent='Modificar Proforma';
-  toast(`✅ Proforma N° ${pf.num} guardada — ve a Cotización para verla`,'ok');
+  
+  // Si es autorizada, actualizar directo en el Sheet sin pedir autorización
+  if(esAutorizada){
+    enviarASheet(pf);
+    syncPFtoSheet(pf);
+    document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
+    document.getElementById('pf-title').textContent='Modificar Proforma';
+    toast(`✅ Proforma N° ${pf.num} actualizada en pedidos`,'ok');
+  } else {
+    document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
+    document.getElementById('pf-title').textContent='Modificar Proforma';
+    toast(`✅ Proforma N° ${pf.num} guardada — ve a Cotización para verla`,'ok');
+  }
   return pf;
 }
 
