@@ -2080,7 +2080,8 @@ async function cargarPedidos(){
             </div>
           </label>`;
         }).join('')}
-        <div style="padding:8px 0 2px;text-align:center">
+        <div style="padding:8px 0 2px;text-align:center;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <button class="btn bgh bsm" onclick="event.stopPropagation();recuperarPFdeSheet('${g.num}')" style="font-size:11px">📋 Ver Proforma</button>
           <button class="btn bgh bsm" onclick="event.stopPropagation();agregarProductoPedido('${g.num}','${esc(g.cliente)}','${esc(g.vehiculo)}','${esc(g.placa)}','${g.fecha||''}','${esc(g.vendedor||'')}')" style="font-size:11px">＋ Agregar repuesto</button>
         </div>
       </div>
@@ -2098,6 +2099,44 @@ function togglePed(row){
     body.style.display='none';
     arrow.style.transform='rotate(0deg)';
   }
+}
+
+// Recuperar proforma completa del Sheet para ver/editar
+async function recuperarPFdeSheet(numProforma){
+  toast('⏳ Descargando proforma...','ok');
+  
+  // Primero buscar si ya está en local
+  const local=proformas.find(p=>String(p.num)===String(numProforma));
+  if(local){
+    recuperarPF(local.id);
+    pfActual.editMode=true;
+    goPage('nueva');
+    toast('Proforma N° '+numProforma+' cargada desde local','ok');
+    return;
+  }
+  
+  // Si no está en local, descargar del Sheet
+  try{
+    const json=await fetchScript('action=readPF');
+    if(json&&json.ok&&json.data&&json.data.length){
+      const spf=json.data.find(p=>String(p.num)===String(numProforma));
+      if(spf){
+        // Agregar a proformas locales
+        proformas.push(spf);
+        if(spf.num>=nextNum) nextNum=spf.num+1;
+        savePF();
+        
+        // Cargar para editar
+        recuperarPF(spf.id);
+        pfActual.editMode=true;
+        goPage('nueva');
+        toast('✅ Proforma N° '+numProforma+' descargada y cargada','ok');
+        return;
+      }
+    }
+  }catch(e){ console.warn('Error descargando PF:',e); }
+  
+  toast('No se encontró la proforma N° '+numProforma+' en el servidor','err');
 }
 
 async function agregarProductoPedido(num,cliente,vehiculo,placa,fecha,vendedor){
