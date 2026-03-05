@@ -2177,19 +2177,31 @@ async function recuperarPFdeSheet(numProforma){
         }
       }
     }
-    // 3. Si no encontró por placa, separar del campo Vehículo usando las marcas conocidas
+    // 3. Si no encontró por placa, separar del campo Vehículo inteligentemente
     if(!ma){
-      const vehStr=(p0['Vehículo']||p0.Vehiculo||'').trim();
-      // Buscar en DB.marcas la marca que coincida al inicio
-      const marcas=(DB.marcas||[]).sort((a,b)=>b.length-a.length);
-      for(let i=0;i<marcas.length;i++){
-        if(vehStr.toUpperCase().startsWith(marcas[i].toUpperCase())){
-          ma=marcas[i];
-          mo=vehStr.substring(marcas[i].length).trim();
+      let vehStr=(p0['Vehículo']||p0.Vehiculo||'').trim().toUpperCase();
+      
+      // Extraer año si está al final (4 dígitos entre 1990-2030)
+      const yearMatch=vehStr.match(/\s+((?:19|20)\d{2})\s*$/);
+      if(yearMatch){
+        a=yearMatch[1];
+        vehStr=vehStr.replace(/\s+(?:19|20)\d{2}\s*$/,'').trim();
+      }
+      
+      // Buscar en DB.marcas cuál marca conocida está al inicio
+      // Ordenar por largo para evitar que "HYUNDAI" matchee antes que "HYUNDAI algo"
+      const marcasConocidas=(DB.marcas||[]).map(m=>m.toUpperCase()).sort((a,b)=>b.length-a.length);
+      let found=false;
+      for(let i=0;i<marcasConocidas.length;i++){
+        if(vehStr.startsWith(marcasConocidas[i]+' ') || vehStr===marcasConocidas[i]){
+          ma=marcasConocidas[i];
+          mo=vehStr.substring(marcasConocidas[i].length).trim();
+          found=true;
           break;
         }
       }
-      if(!ma){
+      if(!found){
+        // Último recurso: primera palabra = marca, resto = modelo
         const parts=vehStr.split(' ');
         ma=parts[0]||'';
         mo=parts.slice(1).join(' ')||'';
