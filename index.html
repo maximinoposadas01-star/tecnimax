@@ -1864,29 +1864,45 @@ function cargarConfig(){
 }
 
 // Escribir pedido en Google Sheets
-// Si reemplazar=true, primero borra los items existentes de esa proforma
+// Si reemplazar=true, primero lee estados actuales, borra y reescribe conservando estados
 async function enviarASheet(pf, reemplazar){
   const fecha=new Date().toISOString().slice(0,10);
   const veh=[pf.veh.ma,pf.veh.mo,pf.veh.a].filter(Boolean).join(' ');
   const mon=pf.moneda==='USD'?'$':'L';
+  
+  // Si es reemplazo, leer estados actuales del Sheet antes de borrar
+  let estadosPrevios={};
+  if(reemplazar){
+    try{
+      const json=await fetchScript('action=read');
+      if(json&&json.ok&&json.data){
+        json.data.filter(p=>String(p.Proforma)===String(pf.num)).forEach(p=>{
+          const key=(p.Repuesto||'').trim().toUpperCase();
+          estadosPrevios[key]={estado:p.Estado||'Pendiente', nota:p.Notas||''};
+        });
+      }
+    }catch(e){}
+  }
+  
   const rows=[];
   pf.prods.forEach(p=>{
+    const key=p.desc.trim().toUpperCase();
+    const prev=estadosPrevios[key]||{};
     rows.push([pf.num, fecha, pf.vendedor||'', pf.cli.nom||'', veh, pf.veh.placa||'',
-               'Producto', p.desc, p.cantidad, mon+' '+fmt(p.precio), 'Pendiente','']);
+               'Producto', p.desc, p.cantidad, mon+' '+fmt(p.precio), prev.estado||'Pendiente', prev.nota||'']);
   });
   pf.servs.forEach(s=>{
+    const key=s.desc.trim().toUpperCase();
+    const prev=estadosPrevios[key]||{};
     rows.push([pf.num, fecha, pf.vendedor||'', pf.cli.nom||'', veh, pf.veh.placa||'',
-               'Servicio', s.desc, s.cantidad, mon+' '+fmt(s.precio), 'Pendiente','']);
+               'Servicio', s.desc, s.cantidad, mon+' '+fmt(s.precio), prev.estado||'Pendiente', prev.nota||'']);
   });
   
   if(!rows.length){ console.warn('enviarASheet: sin items para enviar'); return rows; }
   
   try{
-    // Si es reemplazo, borrar items viejos de esta proforma primero
     if(reemplazar){
-      // Usar GET (fetchScript) que sí sigue redirects de Google
       await fetchScript('action=deleteByProforma&proforma='+encodeURIComponent(pf.num));
-      // Esperar a que Google procese el borrado
       await new Promise(r=>setTimeout(r,2000));
     }
     await fetch(SCRIPT_URL+'?action=write',{
