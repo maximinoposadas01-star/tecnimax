@@ -427,7 +427,10 @@ tbody tr:hover td{background:var(--s2)}
 <div id="page-hist" class="page">
   <div class="flb" style="margin-bottom:14px">
     <div><div class="ph">Cotización</div><div class="ps">Gestionar cotizaciones y pedidos</div></div>
-    <button class="btn bg" onclick="goPage('nueva')">＋ Nueva</button>
+    <div class="flex" style="gap:6px">
+      <button class="btn bgh" onclick="sincronizarPFs()" id="btn-sync">🔄 Sincronizar</button>
+      <button class="btn bg" onclick="goPage('nueva')">＋ Nueva</button>
+    </div>
   </div>
   <div style="margin-bottom:14px">
     <input id="bPl" placeholder="🔍 Buscar por placa, cliente o N°..." oninput="filtHist()" style="width:100%;padding:12px 16px;font-size:16px;border:2px solid var(--gold);border-radius:12px;font-weight:600;text-transform:uppercase;box-sizing:border-box">
@@ -727,6 +730,24 @@ async function postScript(action, data){
 }
 
 // Cargar proformas de Sheets y sincronizar estados
+async function sincronizarPFs(){
+  const btn=document.getElementById('btn-sync');
+  btn.textContent='⏳ Sincronizando...';
+  btn.disabled=true;
+  try{
+    // Primero subir las locales a Sheets
+    await postScript('saveAllPF',{proformas:proformas,nextNum:nextNum});
+    // Luego descargar todo desde Sheets
+    await loadPFfromSheet();
+    renderHist();
+    toast('✅ Sincronizado — '+proformas.length+' proformas','ok');
+  }catch(e){
+    toast('Error al sincronizar','err');
+  }
+  btn.textContent='🔄 Sincronizar';
+  btn.disabled=false;
+}
+
 async function loadPFfromSheet(){
   try{
     // 1. Leer proformas de Sheets
