@@ -132,10 +132,10 @@ tbody tr:hover td{background:var(--s2)}
   padding:1px 5px;border-radius:3px;margin-right:4px;font-weight:700}
 
 /* Items en proforma */
-.irow{display:grid;grid-template-columns:1fr 80px 120px 36px;
+.irow{display:grid;grid-template-columns:1fr 60px 90px 80px 30px;
   gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1)}
 .irow:last-child{border-bottom:none}
-.irow-hdr{display:grid;grid-template-columns:1fr 80px 120px 36px;
+.irow-hdr{display:grid;grid-template-columns:1fr 60px 90px 80px 30px;
   gap:8px;padding:5px 0 6px;border-bottom:2px solid var(--b1);margin-bottom:2px}
 .irow-hdr span{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
 
@@ -256,7 +256,7 @@ tbody tr:hover td{background:var(--s2)}
   .g2,.g3,.g4{grid-template-columns:1fr}
   .nav{padding:0 12px}
   .tabs .tab{padding:5px 9px;font-size:12px}
-  .irow,.irow-hdr{grid-template-columns:1fr 65px 100px 30px}
+  .irow,.irow-hdr{grid-template-columns:1fr 50px 75px 65px 28px}
 }
 </style>
 </head>
@@ -1256,22 +1256,23 @@ function renderLista(tipo){
     return;
   }
   cont.innerHTML=`
-    <div class="irow-hdr">
+    <div class="irow-hdr" style="grid-template-columns:1fr 60px 90px 80px 30px">
       <span>Descripción</span>
-      <span style="text-align:center">Cantidad</span>
-      <span style="text-align:right">Total c/ISV</span>
+      <span style="text-align:center">Cant</span>
+      <span style="text-align:right">P. Unit</span>
+      <span style="text-align:right">Total</span>
       <span></span>
     </div>
     ${arr.map((it,i)=>{
       const conIsv=it.precio*(1+(it.isv||0)/100);
       const total =conIsv*it.cantidad;
-      return `<div class="irow">
+      return `<div class="irow" style="grid-template-columns:1fr 60px 90px 80px 30px">
         <div>
           <div style="font-size:13px;font-weight:500">
             ${it.deOrden?`<span class="ord-bd">#${it.deOrden}</span>`:''}${it.desc}
           </div>
           <div style="font-size:11px;color:var(--mu);margin-top:2px">
-            ${mon} ${fmt(it.precio)} sin ISV + ${it.isv}%${it.ajusteAnt?` <span style="color:var(--gold);font-weight:600">· Ajustado ${it.ajusteAnt}</span>`:''}
+            ${mon} ${fmt(it.precio)} + ${it.isv}% ISV${it.ajusteAnt?` <span style="color:var(--gold);font-weight:600">· Ajustado ${it.ajusteAnt}</span>`:''}
           </div>
         </div>
         <div style="text-align:center">
@@ -1280,9 +1281,12 @@ function renderLista(tipo){
             oninput="updItem('${tipo}',${i},'cantidad',this.value)">
         </div>
         <div style="text-align:right">
-          <input type="number" value="${total.toFixed(2)}" min="0" step="0.01"
-            style="padding:4px;text-align:right;width:100%;color:var(--gold);font-weight:700;font-size:14px"
-            onchange="updTotal('${tipo}',${i},this.value)">
+          <input type="number" value="${it.precio.toFixed(2)}" min="0" step="0.01"
+            style="padding:4px;text-align:right;width:100%;color:var(--gold);font-weight:700"
+            onchange="updPrecioUnit('${tipo}',${i},this.value)">
+        </div>
+        <div style="text-align:right;font-size:13px;font-weight:600;color:var(--tx);padding-top:6px">
+          ${mon} ${fmt(total)}
         </div>
         <div><button class="btn br bxs" onclick="elimItem('${tipo}',${i})">\u2715</button></div>
       </div>`;
@@ -1293,6 +1297,11 @@ function renderLista(tipo){
 function updItem(tipo,i,field,val){
   const arr=tipo==='prod'?pfActual.prods:pfActual.servs;
   arr[i][field]=parseFloat(val)||0;
+  renderLista(tipo); recalc();
+}
+function updPrecioUnit(tipo,i,val){
+  const arr=tipo==='prod'?pfActual.prods:pfActual.servs;
+  arr[i].precio=parseFloat(val)||0;
   renderLista(tipo); recalc();
 }
 function updTotal(tipo,i,val){
