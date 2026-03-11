@@ -1601,25 +1601,6 @@ async function generarPDF(pf){
   }
   y+=6;
 
-  // === OBSERVACIONES ===
-  if(pf.notas && pf.notas.trim()){
-    doc.setFillColor(255,252,235); doc.roundedRect(10,y-2,W-20,0,1.5,1.5,'F'); // placeholder, se ajusta abajo
-    doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(26,26,46);
-    doc.text('Observaciones:',12,y+2);
-    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(80,80,100);
-    const notasLines=doc.splitTextToSize(pf.notas.trim(), W-28);
-    doc.text(notasLines,12,y+6.5);
-    const notasH=notasLines.length*3.5+8;
-    // Redibujar fondo con altura correcta
-    doc.setFillColor(255,252,235); doc.roundedRect(10,y-2,W-20,notasH,1.5,1.5,'F');
-    doc.setDrawColor(230,200,100); doc.setLineWidth(.2); doc.roundedRect(10,y-2,W-20,notasH,1.5,1.5);
-    doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(26,26,46);
-    doc.text('Observaciones:',12,y+2);
-    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(80,80,100);
-    doc.text(notasLines,12,y+6.5);
-    y+=notasH+2;
-  }
-
   // === TABLAS — cellPadding reducido para más espacio ===
   const tabla=(items,titulo,colorRGB)=>{
     if(!items.length) return;
@@ -1689,8 +1670,18 @@ async function generarPDF(pf){
 
   // === FIRMA + RESUMEN compacto ===
   const totH=48;
+  const bx=W-84;
 
-  // Firma izquierda
+  // Observaciones (lado izquierdo, arriba de la firma)
+  if(pf.notas && pf.notas.trim()){
+    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(26,26,46);
+    doc.text('Observaciones:',12,y+2);
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(80,80,100);
+    const notasLines=doc.splitTextToSize(pf.notas.trim(), bx-16);
+    doc.text(notasLines,12,y+6);
+  }
+
+  // Firma izquierda (debajo de observaciones)
   doc.setDrawColor(120,120,140); doc.setLineWidth(.3); doc.line(12,y+totH-10,68,y+totH-10);
   doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(26,26,46);
   doc.text('Firmado por Tecnimax',40,y+totH-6,{align:'center'});
@@ -1698,7 +1689,6 @@ async function generarPDF(pf){
   doc.text('*** GRACIAS POR SU PREFERENCIA ***',40,y+totH-2,{align:'center'});
 
   // Caja resumen
-  const bx=W-84;
   doc.setDrawColor(200,200,210); doc.setLineWidth(.3);
   doc.setFillColor(255,255,255); doc.roundedRect(bx,y,72,totH,2,2,'FD');
 
