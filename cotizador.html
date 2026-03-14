@@ -1082,14 +1082,7 @@ function buscarHist(q){
     res.innerHTML=`<div class="empty">Sin resultados para "<b>${q}</b>" en ${document.getElementById('veh-ma').value||'todos los vehículos'}</div>`;
     return;
   }
-  res.innerHTML=rows.slice(0,50).map(({ord,it})=>{
-    const compraInfo=buscarCompra(it.d);
-    let compraHtml='';
-    if(compraInfo&&compraInfo.length){
-      const ci=compraInfo[0];
-      compraHtml=`<div style="font-size:10px;margin-top:2px;color:var(--gr);font-weight:600">🏪 ${ci.p} · L ${ci.c.toFixed(2)} · ${ci.f}</div>`;
-    }
-    return `
+  res.innerHTML=rows.slice(0,50).map(({ord,it})=>`
     <div class="si" onclick="abrirOrden('${ord.n}','${esc(it.d)}')" style="padding:10px 12px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
@@ -1097,15 +1090,13 @@ function buscarHist(q){
           <div style="font-size:11px;color:var(--tx);margin-top:3px;font-weight:600">
             ${ord.ma} ${ord.mo} ${ord.a||''} &nbsp;·&nbsp; ${fFecha(ord.f)} &nbsp;·&nbsp; ${ord.cl||'Sin nombre'}
           </div>
-          ${compraHtml}
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="color:var(--gold);font-weight:700;font-size:15px">${it.c} unid</div>
           <div style="color:var(--mu2);font-size:11px">${mon} ${fmt(it.p)} c/u</div>
         </div>
       </div>
-    </div>`;
-  }).join('');
+    </div>`).join('');
 }
 
 // ══════════════════════════════════════════
@@ -1138,7 +1129,6 @@ function abrirOrden(numOrden, itemDestacado){
         <div class="oi-d">
           <div class="oi-n">${it.d}</div>
           <div class="oi-m">${mon} ${fmt(it.p)} sin ISV · con ISV 15%: ${mon} ${fmt(it.p*1.15)}</div>
-          ${(()=>{ const ci=buscarCompra(it.d); if(ci&&ci.length){ let h='<div style="font-size:10px;margin-top:2px;color:var(--gr);font-weight:600">🏪 '+ci[0].p+' · L '+ci[0].c.toFixed(2)+' · '+ci[0].f+'</div>'; if(ci.length>1) h+='<div style="font-size:9px;color:var(--mu)">Alt: '+ci[1].p+' · L '+ci[1].c.toFixed(2)+'</div>'; return h; } return '<div style="font-size:9px;color:var(--mu);font-style:italic">Sin datos de compra</div>'; })()}
         </div>
         <div class="oi-c">${it.c} unid</div>
       </label>`;
@@ -1849,9 +1839,8 @@ async function enviarASheet(pf){
   const mon=pf.moneda==='USD'?'$':'L';
   const rows=[];
   pf.prods.forEach(p=>{
-    const repDesc=p.cod?(p.cod+' — '+p.desc):p.desc;
     rows.push([pf.num, fecha, pf.vendedor||'', pf.cli.nom||'', veh, pf.veh.placa||'',
-               'Producto', repDesc, p.cantidad, mon+' '+fmt(p.precio), 'Pendiente','']);
+               'Producto', p.desc, p.cantidad, mon+' '+fmt(p.precio), 'Pendiente','']);
   });
   
   try{
@@ -1875,8 +1864,7 @@ function generarMsgWhatsApp(pf){
     msg+=`(Sin productos — solo servicios)\n`;
   } else {
     pf.prods.forEach((p,i)=>{
-      const codTag=p.cod?` (${p.cod})`:'';
-      msg+=`${i+1}. ${p.desc}${codTag} — ${p.cantidad} unid — ${mon} ${fmt(p.precio)} c/u\n`;
+      msg+=`${i+1}. ${p.desc} — ${p.cantidad} unid — ${mon} ${fmt(p.precio)} c/u\n`;
     });
   }
   msg+=`\n_Favor actualizar estado en la app de pedidos_`;
@@ -2035,9 +2023,7 @@ async function cargarPedidos(){
             <input type="checkbox" ${llegó?'checked':''} style="width:20px;height:20px;accent-color:var(--gr);flex-shrink:0"
               onchange="cambiarEstadoSheet('${g.num}','${esc(it.desc)}',this.checked?'Llegó':'Pendiente',this)">
             <div style="flex:1;min-width:0">
-              <div style="font-weight:600;font-size:12px;${llegó?'text-decoration:line-through':''}">
-                ${(()=>{ const m=it.desc.match(/^(.+?)\s*—\s*(.+)$/); return m?'<span style="background:#e8e0f0;color:#5b21b6;font-size:10px;padding:1px 5px;border-radius:4px;font-weight:700;margin-right:4px">'+m[1]+'</span>'+m[2]:it.desc; })()}
-              </div>
+              <div style="font-weight:600;font-size:12px;${llegó?'text-decoration:line-through':''}">${it.desc}</div>
               <div style="font-size:10px;color:var(--mu)">${it.cant} unid · ${it.precio}</div>
               ${compraHtml}
             </div>
