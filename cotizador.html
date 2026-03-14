@@ -2007,7 +2007,7 @@ async function cargarPedidos(){
       <div class="ped-body" style="display:none;border-top:1px solid var(--b1);padding:6px 14px 10px">
         ${g.items.map((it,idx)=>{
           const llegó=it.estado==='Llegó';
-          const compraInfo=buscarCompra(it.desc);
+          const compraInfo=buscarCompra(it.cod||it.desc);
           let compraHtml='';
           if(compraInfo&&compraInfo.length){
             const ci=compraInfo[0];
@@ -2384,25 +2384,17 @@ function buscarCompra(desc){
   
   var d=desc.toUpperCase().trim();
   
-  // 1. Exacto
+  // 1. Exacto (código o nombre completo)
   if(DBcompras[d]) return DBcompras[d];
   
-  // 2. Primera palabra (código)
-  var p1=d.split(/[\s\-]/)[0];
-  if(p1&&DBcompras[p1]) return DBcompras[p1];
-  
-  // 3. Primera palabra completa
-  var p1b=d.split(/\s/)[0];
-  if(p1b&&DBcompras[p1b]) return DBcompras[p1b];
-  
-  // 4. Parcial
+  // 2. Parcial largo (>=8 chars)
   var keys=Object.keys(DBcompras);
   for(var i=0;i<keys.length;i++){
     var k=keys[i];
     if(k.length>=8&&(k.indexOf(d)>=0||d.indexOf(k)>=0)) return DBcompras[k];
   }
   
-  // 5. Palabras clave (al menos 2 coinciden)
+  // 3. Palabras clave (al menos 2 coinciden de 4+ letras)
   var palabras=d.replace(/[-\*\/]/g,' ').split(/\s+/);
   var pFilt=[];
   for(var i=0;i<palabras.length;i++){ if(palabras[i].length>=4) pFilt.push(palabras[i]); }
@@ -2416,6 +2408,10 @@ function buscarCompra(desc){
     }
     if(mejor) return mejor;
   }
+  
+  // 4. Primera palabra SOLO si tiene 6+ chars (evita PIN, SOP, KIT, etc.)
+  var p1=d.split(/[\s\-]/)[0];
+  if(p1&&p1.length>=6&&DBcompras[p1]) return DBcompras[p1];
   
   return null;
 }
