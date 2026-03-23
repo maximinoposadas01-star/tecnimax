@@ -39,7 +39,6 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.register(swURL).catch(()=>{});
 }
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -460,22 +459,10 @@ tbody tr:hover td{background:var(--s2)}
   </div>
 </div>
 
-<!-- ═══ IMPORTAR ═══ -->
+<!-- ═══ CONFIGURACIÓN ═══ -->
 <div id="page-imp" class="page">
-  <div class="ph">Importar Datos</div>
-  <div class="ps">Carga tu reporte Excel — los datos se dividen automáticamente para no exceder el límite del navegador</div>
-  <div class="card">
-    <div class="ctitle">Reporte de Órdenes (.xlsx)</div>
-    <div class="drop" onclick="document.getElementById('xl-in').click()">
-      <input type="file" id="xl-in" accept=".xlsx,.xls" onchange="importarXL(this)">
-      <div style="font-size:36px;margin-bottom:8px">📊</div>
-      <p style="font-weight:600;margin-bottom:3px">Clic para seleccionar tu archivo Excel</p>
-      <p style="color:var(--mu);font-size:12px">Reporte_ordenes_completo.xlsx</p>
-    </div>
-    <div id="xl-st" style="margin-top:12px"></div>
-    <div class="pbar-wrap" id="pbar-wrap"><div class="pbar" id="pbar"></div></div>
-    <div id="xl-pct" style="font-size:12px;color:var(--mu);margin-top:4px"></div>
-  </div>
+  <div class="ph">Configuración</div>
+  <div class="ps">Los datos de órdenes y compras se leen directamente de Google Sheets — solo pega los reportes del sistema en las hojas correspondientes</div>
   <div class="card">
     <div class="ctitle">Base de datos actual</div>
     <div class="g4">
@@ -484,25 +471,25 @@ tbody tr:hover td{background:var(--s2)}
       <div class="stat" style="margin:0"><div class="sv" id="db-o">0</div><div class="sl">Órdenes</div></div>
       <div class="stat" style="margin:0"><div class="sv" id="db-m">0</div><div class="sl">Marcas</div></div>
     </div>
-    <div class="mt12"><button class="btn br bsm" onclick="limpiarDB()">🗑 Limpiar base de datos</button></div>
+    <div style="margin-top:12px">
+      <button class="btn bg bsm" onclick="recargarDatos()">🔄 Recargar datos de Sheets</button>
+      <button class="btn br bsm" onclick="limpiarDB()" style="margin-left:8px">🗑 Limpiar base de datos</button>
+    </div>
+    <div id="compras-info" style="font-size:12px;color:var(--mu);margin-top:8px"></div>
+  </div>
+  <div class="card">
+    <div class="ctitle">📋 Instrucciones</div>
+    <div style="font-size:13px;color:var(--mu2);line-height:1.6">
+      <p><strong>Órdenes:</strong> Pega el reporte en la hoja <code>Reporte de Órdenes</code> del Google Sheet</p>
+      <p style="margin-top:6px"><strong>Compras:</strong> Pega las hojas <code>Compras Contado</code> y <code>Compras Crédito</code> en hojas con esos mismos nombres</p>
+      <p style="margin-top:6px">Luego presiona <strong>🔄 Recargar datos</strong> o recarga la página</p>
+    </div>
   </div>
   <div class="card">
     <div class="ctitle">Contactos de Compras (WhatsApp)</div>
     <div id="cfg-contactos"></div>
     <button class="btn bgh bsm" onclick="agregarContacto()" style="margin-top:8px">＋ Agregar contacto</button>
     <div style="font-size:11px;color:var(--mu);margin-top:6px">Al autorizar podrás elegir a quién enviar el pedido</div>
-  </div>
-  <div class="card">
-    <div class="ctitle">📦 Base de Datos de Compras</div>
-    <p style="font-size:11px;color:var(--mu);margin:4px 0 8px">Importa Excel de compras directo del sistema (uno o varios archivos)</p>
-    <div class="drop" onclick="document.getElementById('xl-compras').click()" style="padding:12px">
-      <input type="file" id="xl-compras" accept=".json,.xlsx,.xls" multiple onchange="importarCompras(this)" style="display:none">
-      <div style="font-size:28px;margin-bottom:6px">🛒</div>
-      <p style="font-weight:600;margin-bottom:3px">Importar datos de compras</p>
-      <p style="color:var(--mu);font-size:11px">Excel (.xls/.xlsx) o JSON — puede seleccionar varios archivos</p>
-    </div>
-    <div id="xl-compras-st" style="margin-top:8px;font-size:12px"></div>
-    <div id="compras-info" style="font-size:12px;color:var(--mu);margin-top:4px"></div>
   </div>
 </div>
 
@@ -607,27 +594,11 @@ const SCRIPT_URL='https://script.google.com/macros/s/AKfycbx2yHUlMO-UH6Mrp8bxYY3
 const CHUNK_SIZE = 1400;
 
 function saveDB(){
-  try{
-    const meta={productos:DB.productos,clientes:DB.clientes,marcas:DB.marcas,modelos:DB.modelos};
-    // Subir a Google Sheets en background
-    syncDBtoSheet();
-  }catch(e){ console.warn('saveDB error:',e.message); toast('Advertencia: datos no guardados completamente','err'); }
+  // Datos viven en Google Sheets — no se necesita subir nada
+  // Solo se usa para mantener compatibilidad con llamadas existentes
 }
 
-async function syncDBtoSheet(){
-  try{
-    const meta=JSON.stringify({productos:DB.productos,clientes:DB.clientes,marcas:DB.marcas,modelos:DB.modelos});
-    await postScript('saveDB',{chunk:'meta',tipo:'meta',data:meta});
-    const keys=Object.keys(DB.ordenes);
-    const cs=2000;
-    for(let i=0;i<Math.ceil(keys.length/cs);i++){
-      const slice=keys.slice(i*cs,(i+1)*cs);
-      const ch={};slice.forEach(k=>ch[k]=DB.ordenes[k]);
-      await postScript('saveDB',{chunk:'ord_'+i,tipo:'ordenes',data:JSON.stringify(ch)});
-    }
-    await postScript('saveDB',{chunk:'version',tipo:'meta',data:String(Date.now())});
-  }catch(e){}
-}
+
 
 function loadDB(){
   // Cargar directamente desde Google Sheets
@@ -807,100 +778,16 @@ function updDBstats(){
 // ══════════════════════════════════════════
 //  IMPORTAR EXCEL
 // ══════════════════════════════════════════
-function importarXL(inp){
-  const file=inp.files[0]; if(!file) return;
-  const st=document.getElementById('xl-st');
-  const pw=document.getElementById('pbar-wrap');
-  const pb=document.getElementById('pbar');
-  const pct=document.getElementById('xl-pct');
-  st.innerHTML='<span style="color:var(--gold)">⏳ Leyendo archivo...</span>';
-  pw.style.display='block'; pb.style.width='15%'; pct.textContent='Leyendo Excel...';
-
-  const reader=new FileReader();
-  reader.onload=e=>{
-    try{
-      pb.style.width='35%'; pct.textContent='Procesando filas...';
-      const wb=XLSX.read(e.target.result,{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const data=XLSX.utils.sheet_to_json(ws,{header:1});
-
-      const iOrden=1,iFecha=3,iMarca=10,iMod=11,iAño=12;
-      const iCli=19,iId=20,iPlaca=7;
-      const iProd=32,iCantP=33,iMonP=34;
-      const iServ=27,iCantS=28,iMonS=30;
-
-      const tmpOrds={}, tmpProds={}, tmpClis={};
-      const tmpMarcas=new Set(), tmpMods={};
-      let lOrden=null,lMarca='',lMod='',lAño='',lFecha='',lCli='',lPlaca='';
-
-      for(let i=1;i<data.length;i++){
-        const r=data[i]; if(!r||r.every(c=>!c)) continue;
-        const orden =r[iOrden];
-        const fecha =r[iFecha]?String(r[iFecha]).slice(0,10):lFecha;
-        const marca =r[iMarca]?String(r[iMarca]).trim():lMarca;
-        const mod   =r[iMod]  ?String(r[iMod]).trim()  :lMod;
-        const año   =r[iAño]  ?String(r[iAño]).trim()  :lAño;
-        const cliRaw=r[iCli]  ?String(r[iCli]).trim()  :'';
-        const cli   =cliRaw&&cliRaw!=='no definifo'?cliRaw:lCli;
-        const placa =r[iPlaca]?String(r[iPlaca]).trim():lPlaca;
-
-        if(r[iOrden]){
-          lOrden=orden;lMarca=marca;lMod=mod;lAño=año;lFecha=fecha;lCli=cli;lPlaca=placa;
-          if(!tmpOrds[orden]) tmpOrds[orden]={n:Number(orden),f:fecha,ma:marca,mo:mod,a:año,cl:cli,pl:placa,it:[]};
-          if(cli&&cli!=='no definido'){
-            if(!tmpClis[cli]) tmpClis[cli]={id:''};
-            if(r[iId]) tmpClis[cli].id=String(r[iId]);
-          }
-          if(marca){
-            tmpMarcas.add(marca);
-            if(!tmpMods[marca]) tmpMods[marca]=new Set();
-            if(mod) tmpMods[marca].add(mod);
-          }
-        }
-
-        const proc=(nombre,cantR,montoR,tipo)=>{
-          if(!nombre||!lOrden) return;
-          const cant=parseFloat(cantR)||1;
-          const monto=parseFloat(montoR)||0;
-          const pu=Math.round((monto/cant)*100)/100;
-          tmpOrds[lOrden].it.push({d:nombre,c:Math.round(cant*100)/100,p:pu,t:tipo});
-          const key=nombre.toUpperCase();
-          if(!tmpProds[key]){ tmpProds[key]={n:nombre,p:pu,t:tipo,v:1,f:fecha,m:{}}; }
-          else{ tmpProds[key].v++; if(pu>0) tmpProds[key].p=pu; if(fecha>tmpProds[key].f) tmpProds[key].f=fecha; }
-          if(lMarca&&lMod){
-            const mk=lMarca+'|'+lMod;
-            if(!tmpProds[key].m[mk]) tmpProds[key].m[mk]=[];
-            if(lAño&&!tmpProds[key].m[mk].includes(lAño)) tmpProds[key].m[mk].push(lAño);
-          }
-        };
-
-        const prod=r[iProd]?String(r[iProd]).trim():'';
-        const serv=r[iServ]?String(r[iServ]).trim():'';
-        if(prod) proc(prod,r[iCantP],r[iMonP],'p');
-        if(serv) proc(serv,r[iCantS],r[iMonS],'s');
-      }
-
-      pb.style.width='80%'; pct.textContent='Guardando...';
-      DB.ordenes  =tmpOrds;
-      DB.productos=tmpProds;
-      DB.clientes =tmpClis;
-      DB.marcas   =[...tmpMarcas];
-      DB.modelos  =Object.fromEntries(Object.entries(tmpMods).map(([k,v])=>[k,[...v]]));
-      saveDB();
-      pb.style.width='100%';
-      updStats(); updDBstats();
-      const np=Object.keys(DB.productos).length,nc=Object.keys(DB.clientes).length,no=Object.keys(DB.ordenes).length;
-      st.innerHTML=`<span class="bd bdgr" style="font-size:13px;padding:8px 14px">✅ ${np} productos · ${nc} clientes · ${no} órdenes importadas</span>`;
-      pw.style.display='none'; pct.textContent='';
-      toast('¡Importación exitosa!','ok');
-    }catch(err){
-      st.innerHTML=`<span class="bd bdr">❌ Error: ${err.message}</span>`;
-      pw.style.display='none'; pct.textContent='';
-      toast('Error al importar','err');
-    }
-    inp.value='';
-  };
-  reader.readAsArrayBuffer(file);
+// Recargar datos de órdenes y compras desde Google Sheets
+async function recargarDatos(){
+  toast('🔄 Recargando datos de Sheets...','ok');
+  try{
+    await loadDBfromSheet();
+    loadComprasDB();
+    toast('✅ Datos recargados','ok');
+  }catch(err){
+    toast('Error al recargar: '+err.message,'err');
+  }
 }
 
 // ══════════════════════════════════════════
@@ -1760,8 +1647,6 @@ document.addEventListener('click', function(e) {
     case 'agregarSeleccionados': agregarSeleccionados(); break;
     case 'agregarManual':   agregarManual(); break;
     case 'calcVenta':       calcVenta(); break;
-    case 'dropXL':          document.getElementById('xl-in').click(); break;
-    case 'dropCompras':     document.getElementById('xl-compras').click(); break;
     case 'ganToggle': {
       const d = document.querySelector('.gan-body');
       if(d) d.style.display = d.style.display === 'none' ? 'flex' : 'none';
@@ -1810,18 +1695,6 @@ function _bindStatic() {
       });
     } catch(e) {}
   });
-
-  // Drops
-  const dropXL = document.querySelector('.drop input#xl-in');
-  if (dropXL) {
-    const dropEl = dropXL.closest('.drop');
-    if (dropEl) { dropEl.removeAttribute('onclick'); dropEl.dataset.action = 'dropXL'; }
-  }
-  const dropC = document.querySelector('#xl-compras');
-  if (dropC) {
-    const dropEl = dropC.closest('.drop');
-    if (dropEl) { dropEl.removeAttribute('onclick'); dropEl.dataset.action = 'dropCompras'; }
-  }
 
   // Gan strip
   const gan = document.querySelector('.gan-strip');
@@ -2326,10 +2199,7 @@ function loadComprasDB(){
     .catch(function(){ _comprasLoading=false; });
 }
 
-function saveComprasDB(data){
-  DBcompras=data;
-  // No hay que guardar nada — ya está en Sheets
-}
+
 
 function initComprasInfo(){
   const el=document.getElementById('compras-info');
@@ -2337,128 +2207,6 @@ function initComprasInfo(){
   loadComprasDB();
 }
 
-// importarCompras — procesa Excel localmente y sube el JSON resultante a Sheets
-async function importarCompras(input){
-  var files=input.files; if(!files.length) return;
-  var st=document.getElementById('xl-compras-st');
-  st.innerHTML='⏳ Procesando '+files.length+' archivo(s)...';
-
-  // ── Si es un solo JSON, importar directo ──
-  if(files.length===1 && files[0].name.toLowerCase().endsWith('.json')){
-    var reader=new FileReader();
-    reader.onload=function(e){
-      try{
-        var data=JSON.parse(e.target.result);
-        DBcompras=data;
-        var n=Object.keys(data).length;
-        st.innerHTML='✅ '+n+' productos importados (JSON)';
-        document.getElementById('compras-info').textContent='✅ '+n+' productos con info de compras';
-        toast(n+' productos importados','ok');
-      }catch(err){ st.innerHTML='❌ Error: '+err.message; }
-    };
-    reader.readAsText(files[0]);
-    input.value='';
-    return;
-  }
-
-  // ── Excel: procesar TODOS los archivos y TODAS las hojas ──
-  var compras={};
-  var totalItems=0, totalFacturas=0;
-
-  function procesarHoja(rows){
-    var provActual='', fechaActual='';
-    for(var i=1;i<rows.length;i++){
-      var r=rows[i];
-      if(!r||!r.length) continue;
-      var col0=String(r[0]||'').trim();
-      var col1=String(r[1]||'').trim();
-      if(col0 && col0!=='Cabys' && /^\d{2}-\d{2}-\d{4}$/.test(col0)){
-        var parts=col0.split('-');
-        fechaActual=parts[2]+'-'+parts[1]+'-'+parts[0];
-        provActual=String(r[5]||'').trim();
-        totalFacturas++;
-        continue;
-      }
-      if(col0==='Cabys'||col1==='Código') continue;
-      if(provActual && r[4] && String(r[4]).trim() && r[10]){
-        var codigo=col1.toUpperCase();
-        var nombre=String(r[4]).trim().toUpperCase();
-        var costo=parseFloat(r[10])||0;
-        if(!costo||costo<=0) continue;
-        var entry={p:provActual.substring(0,25),c:Math.round(costo*100)/100,f:fechaActual};
-        if(codigo && codigo!==nombre){
-          if(!compras[codigo]) compras[codigo]=[];
-          compras[codigo].push(entry);
-        }
-        if(nombre){
-          if(!compras[nombre]) compras[nombre]=[];
-          compras[nombre].push(entry);
-        }
-        totalItems++;
-      }
-    }
-  }
-
-  for(var fi=0;fi<files.length;fi++){
-    var file=files[fi];
-    st.innerHTML='⏳ Procesando archivo '+(fi+1)+' de '+files.length+'...';
-    var buf=await new Promise(function(resolve){
-      var reader=new FileReader();
-      reader.onload=function(e){ resolve(e.target.result); };
-      reader.readAsArrayBuffer(file);
-    });
-    try{
-      var wb=XLSX.read(buf,{type:'array'});
-      for(var si=0;si<wb.SheetNames.length;si++){
-        var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[si]],{header:1,defval:''});
-        if(rows.length>1) procesarHoja(rows);
-      }
-    }catch(err){
-      st.innerHTML='❌ Error en '+file.name+': '+err.message;
-      input.value=''; return;
-    }
-  }
-
-  // Deduplicar y ordenar por fecha reciente
-  var final={};
-  Object.keys(compras).forEach(function(k){
-    var seen={}, unicos=[];
-    compras[k].forEach(function(e){
-      var sig=e.p+'|'+e.c+'|'+e.f;
-      if(!seen[sig]){ seen[sig]=1; unicos.push(e); }
-    });
-    unicos.sort(function(a,b){ return (b.f||'').localeCompare(a.f||''); });
-    final[k]=unicos;
-  });
-
-  DBcompras=final;
-  var n=Object.keys(final).length;
-  st.innerHTML='✅ '+n+' productos procesados — guardando en Sheets...';
-
-  // Subir a Sheets via Apps Script en chunks
-  // Convertir a array de filas [[clave, json], ...]
-  // y enviarlo como parte de saveConfig (campo dbcompras_json)
-  // Para no saturar la URL, subir en batches de 500 claves
-  try{
-    const claves=Object.keys(final);
-    const BATCH=400;
-    const totalBatches=Math.ceil(claves.length/BATCH);
-    for(let bi=0;bi<totalBatches;bi++){
-      const slice=claves.slice(bi*BATCH,(bi+1)*BATCH);
-      const batch={};
-      slice.forEach(k=>{batch[k]=final[k];});
-      await postScript('saveDBcompras',{data:batch,batch:bi,total:totalBatches});
-      st.innerHTML='⏳ Guardando en Sheets... '+(bi+1)+'/'+totalBatches;
-    }
-    st.innerHTML='✅ '+n+' productos guardados en Google Sheets';
-    document.getElementById('compras-info').textContent='✅ '+n+' productos con info de compras';
-    toast(n+' productos de compras guardados','ok');
-  }catch(err){
-    st.innerHTML='✅ '+n+' productos en memoria (error al subir a Sheets: '+err.message+')';
-    toast(n+' productos cargados (solo memoria)','ok');
-  }
-  input.value='';
-}
 
 // Buscar info de compra para un producto
 function buscarCompra(desc){
