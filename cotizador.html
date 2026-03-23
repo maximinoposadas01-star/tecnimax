@@ -2296,18 +2296,17 @@ async function finalizarPedidoSheet(numProforma){
   }
 }
 
+// ══════════════════════════════════════════
+//  DBcompras — carga desde Google Sheets
+// ══════════════════════════════════════════
+let _comprasLoading=false;
+
 // INIT
 try{ loadDB(); }catch(e){ console.error("loadDB error:",e); }
 try{ loadPF(); }catch(e){ console.error("loadPF error:",e); }
 try{ updStats(); }catch(e){ console.error("updStats error:",e); }
 try{ cargarConfig(); }catch(e){ console.error("cargarConfig error:",e); }
 try{ initComprasInfo(); }catch(e){ console.error("initComprasInfo error:",e); }
-
-
-// ══════════════════════════════════════════
-//  DBcompras — carga desde Google Sheets
-// ══════════════════════════════════════════
-let _comprasLoading=false;
 
 function loadComprasDB(){
   if(Object.keys(DBcompras).length>0) return; // ya cargado
