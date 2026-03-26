@@ -695,7 +695,10 @@ async function loadPFfromSheet(){
     const json=await fetchScript('action=readPF');
     if(json&&json.ok&&json.data&&json.data.length){
       const sheetPFs=json.data;
+      // Sanitizar fechas que vienen con formato ISO completo de Sheets
       sheetPFs.forEach(spf=>{
+        if(spf.fecha) spf.fecha=String(spf.fecha).split('T')[0];
+        if(spf.vence) spf.vence=String(spf.vence).split('T')[0];
         const local=proformas.find(p=>p.id===spf.id);
         if(!local){
           // No existe localmente, agregar desde Sheets
@@ -732,9 +735,9 @@ async function loadPFfromSheet(){
     // Actualizar nextNum (extraer parte numérica si tiene prefijo de iniciales)
     proformas.forEach(p=>{ const n=parseInt(String(p.num).replace(/^[A-Z]+/i,'')); if(n>=nextNum) nextNum=n+1; });
     updStats();
-    if(document.getElementById('page-dash').classList.contains('on')) renderDash();
-    if(document.getElementById('page-hist').classList.contains('on')) renderHist();
-  }catch(e){ /* silenciar si no hay conexión */ }
+    renderDash();
+    renderHist();
+  }catch(e){ console.warn('loadPFfromSheet error:',e); }
 }
 
 function limpiarDB(){
@@ -1607,7 +1610,7 @@ async function generarPDF(pf){
 // ══════════════════════════════════════════
 function fmt(n){ return (n||0).toLocaleString('es-HN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function esc(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-function fFecha(f){ if(!f)return'—'; try{ if(f.includes('-')){const[y,m,d]=f.split('-');return`${d}-${m}-${y}`;} }catch(e){} return f; }
+function fFecha(f){ if(!f)return'—'; try{ let s=String(f).split('T')[0]; if(s.includes('-')){const[y,m,d]=s.split('-');return`${d}-${m}-${y}`;} }catch(e){} return f; }
 function cerrarModal(id){ document.getElementById(id).classList.remove('on'); }
 
 // ══════════════════════════════════════════
@@ -1925,7 +1928,7 @@ async function cargarPedidos(){
   const grupos={};
   pedidos.forEach(p=>{
     const num=String(p.Proforma);
-    if(!grupos[num]) grupos[num]={num, fecha:p.Fecha, vendedor:p.Vendedor, cliente:p.Cliente, vehiculo:p['Vehículo']||p.Vehiculo||'', placa:p.Placa, items:[]};
+    if(!grupos[num]) grupos[num]={num, fecha:String(p.Fecha||'').split('T')[0], vendedor:p.Vendedor, cliente:p.Cliente, vehiculo:p['Vehículo']||p.Vehiculo||'', placa:p.Placa, items:[]};
     grupos[num].items.push({desc:p.Repuesto, cant:p.Cantidad, precio:p.Precio, estado:p.Estado||'Pendiente', nota:p.Notas||''});
   });
   
