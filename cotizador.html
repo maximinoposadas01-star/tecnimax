@@ -813,7 +813,8 @@ function initPF(){
   document.getElementById('pf-mon').value='HNL';
   document.getElementById('gan-global').value='30';
   const hoy=new Date(), vence=new Date(); vence.setDate(vence.getDate()+30);
-  document.getElementById('pf-fecha').value=hoy.toISOString().slice(0,10);
+  const pad2=n=>String(n).padStart(2,'0');
+  document.getElementById('pf-fecha').value=hoy.getFullYear()+'-'+pad2(hoy.getMonth()+1)+'-'+pad2(hoy.getDate())+' '+pad2(hoy.getHours())+':'+pad2(hoy.getMinutes());
   document.getElementById('pf-vence').value=vence.toISOString().slice(0,10);
   document.getElementById('vfilt').classList.remove('on');
   renderListas(); recalc();
@@ -1641,7 +1642,7 @@ async function generarPDF(pf){
 // ══════════════════════════════════════════
 function fmt(n){ return (n||0).toLocaleString('es-HN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function esc(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-function fFecha(f){ if(!f)return'—'; try{ if(f.includes('-')){const[y,m,d]=f.split('-');return`${d}-${m}-${y}`;} }catch(e){} return f; }
+function fFecha(f){ if(!f)return'—'; try{ const s=String(f).trim(); if(s.includes('-')){ const[datePart,timePart]=s.split(' '); const[y,m,d]=datePart.split('-'); const fecha=`${d}-${m}-${y}`; return timePart ? fecha+' '+timePart : fecha; } }catch(e){} return f; }
 function cerrarModal(id){ document.getElementById(id).classList.remove('on'); }
 
 // ══════════════════════════════════════════
