@@ -1642,7 +1642,7 @@ async function generarPDF(pf){
 // ══════════════════════════════════════════
 function fmt(n){ return (n||0).toLocaleString('es-HN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function esc(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-function fFecha(f){ if(!f)return'—'; try{ const s=String(f).trim(); if(s.includes('-')){ const[datePart,timePart]=s.split(' '); const[y,m,d]=datePart.split('-'); const fecha=`${d}-${m}-${y}`; return timePart ? fecha+' '+timePart : fecha; } }catch(e){} return f; }
+function fFecha(f){ if(!f)return'—'; try{ const s=String(f).trim(); if(s.includes('-')){ const parts=s.split(' '); const[y,m,d]=parts[0].split('-'); const fecha=d+'/'+m+'/'+y.slice(2); return parts[1] ? fecha+' '+parts[1] : fecha; } }catch(e){} return f; }
 function cerrarModal(id){ document.getElementById(id).classList.remove('on'); }
 
 // ══════════════════════════════════════════
