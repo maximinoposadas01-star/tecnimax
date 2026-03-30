@@ -491,6 +491,13 @@ tbody tr:hover td{background:var(--s2)}
     <button class="btn bgh bsm" onclick="agregarContacto()" style="margin-top:8px">＋ Agregar contacto</button>
     <div style="font-size:11px;color:var(--mu);margin-top:6px">Al autorizar podrás elegir a quién enviar el pedido</div>
   </div>
+  <div class="card">
+    <div class="ctitle">📜 Términos y Condiciones</div>
+    <p style="font-size:11px;color:var(--mu);margin:4px 0 8px">Se imprimen al final del PDF de cada proforma</p>
+    <textarea id="cfg-terminos" rows="6" style="font-size:13px;line-height:1.5" placeholder="Ej: Los precios incluyen ISV. Garantía de 30 días en repuestos nuevos. Tiempo de entrega estimado: 3-5 días hábiles..."></textarea>
+    <button class="btn bg bsm" onclick="guardarTerminos()" style="margin-top:8px">💾 Guardar términos</button>
+    <div id="terminos-st" style="font-size:12px;margin-top:4px"></div>
+  </div>
 </div>
 
 <!-- ═══ MODAL: BÚSQUEDA EN HISTORIAL ═══ -->
@@ -695,10 +702,7 @@ async function loadPFfromSheet(){
     const json=await fetchScript('action=readPF');
     if(json&&json.ok&&json.data&&json.data.length){
       const sheetPFs=json.data;
-      // Sanitizar fechas que vienen con formato ISO completo de Sheets
       sheetPFs.forEach(spf=>{
-        if(spf.fecha) spf.fecha=String(spf.fecha).split('T')[0];
-        if(spf.vence) spf.vence=String(spf.vence).split('T')[0];
         const local=proformas.find(p=>p.id===spf.id);
         if(!local){
           // No existe localmente, agregar desde Sheets
@@ -735,9 +739,9 @@ async function loadPFfromSheet(){
     // Actualizar nextNum (extraer parte numérica si tiene prefijo de iniciales)
     proformas.forEach(p=>{ const n=parseInt(String(p.num).replace(/^[A-Z]+/i,'')); if(n>=nextNum) nextNum=n+1; });
     updStats();
-    renderDash();
-    renderHist();
-  }catch(e){ console.warn('loadPFfromSheet error:',e); }
+    if(document.getElementById('page-dash').classList.contains('on')) renderDash();
+    if(document.getElementById('page-hist').classList.contains('on')) renderHist();
+  }catch(e){ /* silenciar si no hay conexión */ }
 }
 
 function limpiarDB(){
@@ -1574,8 +1578,35 @@ async function generarPDF(pf){
   doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(80,80,100); doc.text('Total:',bx+3,ry+4);
   doc.setFontSize(13); doc.setTextColor(200,16,46); doc.text(`${mon} ${fmt(pf.total)}`,bx+69,ry+4,{align:'right'});
 
-  // === FOOTER compacto ===
+  // === TÉRMINOS Y CONDICIONES ===
   const fy=H-14;
+  const terminos = getTerminos();
+  if (terminos && terminos.trim()) {
+    y = y + totH + 4;
+    if (y + 20 > fy - 2) {
+      doc.addPage();
+      doc.setFillColor(200,16,46); doc.rect(0,0,W,1.5,'F');
+      y = 10;
+    }
+    doc.setDrawColor(200,200,210); doc.setLineWidth(.2); doc.line(10,y-1,W-10,y-1);
+    doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(26,26,46);
+    doc.text('TÉRMINOS Y CONDICIONES',10,y+3);
+    y += 7;
+    doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(80,80,100);
+    const tLines = doc.splitTextToSize(terminos.trim(), W - 20);
+    if (y + tLines.length * 2.5 > fy - 2) {
+      doc.addPage();
+      doc.setFillColor(200,16,46); doc.rect(0,0,W,1.5,'F');
+      y = 10;
+      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(26,26,46);
+      doc.text('TÉRMINOS Y CONDICIONES',10,y);
+      y += 4;
+      doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(80,80,100);
+    }
+    doc.text(tLines, 10, y);
+  }
+
+  // === FOOTER compacto ===
   doc.setDrawColor(200,16,46); doc.setLineWidth(.4); doc.line(0,fy,W,fy);
   doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(26,26,46);
   doc.text('GARANTÍA DE TRABAJO',10,fy+4.5);
@@ -1610,7 +1641,7 @@ async function generarPDF(pf){
 // ══════════════════════════════════════════
 function fmt(n){ return (n||0).toLocaleString('es-HN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function esc(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-function fFecha(f){ if(!f)return'—'; try{ let s=String(f).split('T')[0]; if(s.includes('-')){const[y,m,d]=s.split('-');return`${d}-${m}-${y}`;} }catch(e){} return f; }
+function fFecha(f){ if(!f)return'—'; try{ if(f.includes('-')){const[y,m,d]=f.split('-');return`${d}-${m}-${y}`;} }catch(e){} return f; }
 function cerrarModal(id){ document.getElementById(id).classList.remove('on'); }
 
 // ══════════════════════════════════════════
@@ -1780,9 +1811,27 @@ async function cargarConfig(){
         const n=parseInt(json.data.nextNum)||0;
         if(n>nextNum) nextNum=n;
       }
+      if(json.data.terminos){
+        _terminos=json.data.terminos;
+        const el=document.getElementById('cfg-terminos');
+        if(el) el.value=_terminos;
+      }
     }
   }catch(e){}
   renderContactos();
+}
+
+let _terminos = '';
+function getTerminos(){ return _terminos; }
+function guardarTerminos(){
+  const el=document.getElementById('cfg-terminos');
+  _terminos=el.value;
+  postScript('saveConfig',{terminos:_terminos}).then(()=>{
+    document.getElementById('terminos-st').innerHTML='<span style="color:var(--gr)">✅ Guardado</span>';
+    setTimeout(()=>{ document.getElementById('terminos-st').innerHTML=''; },2000);
+  }).catch(()=>{
+    document.getElementById('terminos-st').innerHTML='<span style="color:var(--rd)">❌ Error</span>';
+  });
 }
 
 // Escribir pedido en Google Sheets
@@ -1928,7 +1977,7 @@ async function cargarPedidos(){
   const grupos={};
   pedidos.forEach(p=>{
     const num=String(p.Proforma);
-    if(!grupos[num]) grupos[num]={num, fecha:String(p.Fecha||'').split('T')[0], vendedor:p.Vendedor, cliente:p.Cliente, vehiculo:p['Vehículo']||p.Vehiculo||'', placa:p.Placa, items:[]};
+    if(!grupos[num]) grupos[num]={num, fecha:p.Fecha, vendedor:p.Vendedor, cliente:p.Cliente, vehiculo:p['Vehículo']||p.Vehiculo||'', placa:p.Placa, items:[]};
     grupos[num].items.push({desc:p.Repuesto, cant:p.Cantidad, precio:p.Precio, estado:p.Estado||'Pendiente', nota:p.Notas||''});
   });
   
