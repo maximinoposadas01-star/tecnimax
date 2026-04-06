@@ -543,7 +543,7 @@ tbody tr:hover td{background:var(--s2)}
         <input type="number" id="mm-costo" placeholder="0.00" min="0" step="0.01" oninput="calcVenta()">
       </div>
       <div class="f">
-        <label>% Ganancia</label>
+        <label id="lbl-gan">% Margen s/venta</label>
         <div style="position:relative">
           <input type="number" id="mm-gan" min="0" step="0.5" oninput="calcVenta()">
           <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--mu)">%</span>
@@ -1051,6 +1051,8 @@ function abrirManual(tipo){
   document.getElementById('mm-prev').style.display='none';
   // Ocultar costo/ganancia para servicios
   document.getElementById('mm-costo-gan').style.display=tipo==='serv'?'none':'';
+  // Etiqueta dinámica según tipo
+  document.getElementById('lbl-gan').textContent=tipo==='prod'?'% Margen s/venta':'% Ganancia';
   updHint();
   document.getElementById('modal-man').classList.add('on');
   setTimeout(()=>document.getElementById('mm-desc').focus(),150);
@@ -1060,7 +1062,15 @@ function calcVenta(){
   const c=parseFloat(document.getElementById('mm-costo').value)||0;
   const g=parseFloat(document.getElementById('mm-gan').value)||0;
   if(!c){ document.getElementById('mm-prev').style.display='none'; return; }
-  const gm=c*g/100, venta=c+gm;
+  let venta, gm;
+  if(tipoModal==='prod'){
+    // Margen sobre venta: venta = costo / (1 - %/100)
+    if(g>=100){ toast('El margen no puede ser 100% o más','err'); return; }
+    venta=c/(1-g/100); gm=venta-c;
+  } else {
+    // Markup sobre costo: venta = costo + (costo × %/100)
+    gm=c*g/100; venta=c+gm;
+  }
   document.getElementById('mm-precio').value=venta.toFixed(2);
   document.getElementById('pr-co').textContent=getMon()+' '+fmt(c);
   document.getElementById('pr-ga').textContent=getMon()+' '+fmt(gm);
@@ -1072,7 +1082,9 @@ function recalcGan(){
   const c=parseFloat(document.getElementById('mm-costo').value)||0;
   const v=parseFloat(document.getElementById('mm-precio').value)||0;
   if(c&&v){
-    document.getElementById('mm-gan').value=((v-c)/c*100).toFixed(1);
+    // Inverso: prod = margen s/venta, serv = markup s/costo
+    const pct=tipoModal==='prod'?((v-c)/v*100):((v-c)/c*100);
+    document.getElementById('mm-gan').value=pct.toFixed(1);
     document.getElementById('pr-co').textContent=getMon()+' '+fmt(c);
     document.getElementById('pr-ga').textContent=getMon()+' '+fmt(v-c);
     document.getElementById('pr-ve').textContent=getMon()+' '+fmt(v);
