@@ -281,9 +281,7 @@ tbody tr:hover td{background:var(--s2)}
   <div class="stats">
     <div class="stat"><div class="sv" id="s-p">0</div><div class="sl">Productos en base</div></div>
     <div class="stat"><div class="sv" id="s-c">0</div><div class="sl">Clientes</div></div>
-    <div class="stat"><div class="sv" id="s-pend">0</div><div class="sl">Pendientes</div></div>
-    <div class="stat"><div class="sv" id="s-aut" style="color:var(--gr)">0</div><div class="sl">Autorizadas</div></div>
-    <div class="stat"><div class="sv" id="s-hi">0</div><div class="sl">Archivadas</div></div>
+    <div class="stat"><div class="sv" id="s-pend">0</div><div class="sl">Cotizaciones</div></div>
   </div>
   <div class="card">
     <div class="ctitle">Proformas Pendientes</div>
@@ -434,17 +432,10 @@ tbody tr:hover td{background:var(--s2)}
   <div style="margin-bottom:14px">
     <input id="bPl" placeholder="🔍 Buscar por placa, cliente o N°..." oninput="filtHist()" style="width:100%;padding:12px 16px;font-size:16px;border:2px solid var(--gold);border-radius:12px;font-weight:600;text-transform:uppercase;box-sizing:border-box">
   </div>
-  <div class="sec-lbl"><div class="dot dot-p"></div>PENDIENTES <span id="cnt-pend" style="color:var(--mu);font-weight:400"></span></div>
-  <div class="card"><div id="l-pend"><div class="empty">Sin pendientes</div></div></div>
-  <div class="sec-lbl"><div class="dot" style="background:var(--gr)"></div>AUTORIZADAS <span id="cnt-aut" style="color:var(--mu);font-weight:400"></span></div>
-  <div class="card"><div id="l-aut"><div class="empty">Sin autorizadas</div></div></div>
-  <div style="text-align:center;margin-top:16px">
-    <button class="btn bgh bsm" onclick="toggleArchivadas()" id="btn-arch" style="color:var(--mu)">📂 Ver archivadas</button>
-  </div>
-  <div id="arch-section" style="display:none">
-    <div class="sec-lbl" style="margin-top:14px"><div class="dot dot-h"></div>ARCHIVADAS <span id="cnt-hist" style="color:var(--mu);font-weight:400"></span></div>
-    <div class="card"><div id="l-hist"><div class="empty">Sin archivadas</div></div></div>
-  </div>
+  <div class="sec-lbl"><div class="dot dot-p"></div>COTIZACIONES <span id="cnt-pend" style="color:var(--mu);font-weight:400"></span></div>
+  <div class="card"><div id="l-pend"><div class="empty">Sin cotizaciones</div></div></div>
+  <!-- hidden containers kept for compatibility -->
+  <div style="display:none"><div id="l-aut"></div><div id="l-hist"></div><span id="cnt-aut"></span><span id="cnt-hist"></span><div id="arch-section"></div></div>
 </div>
 
 <!-- ═══ PEDIDOS ═══ -->
@@ -771,9 +762,9 @@ function goPage(id){
 function updStats(){
   document.getElementById('s-p').textContent   =Object.keys(DB.productos).length;
   document.getElementById('s-c').textContent   =Object.keys(DB.clientes).length;
-  document.getElementById('s-pend').textContent=proformas.filter(p=>p.estado==='pend').length;
-  document.getElementById('s-aut').textContent =proformas.filter(p=>p.estado==='autorizado').length;
-  document.getElementById('s-hi').textContent  =proformas.filter(p=>p.estado==='hist').length;
+  document.getElementById('s-pend').textContent=proformas.length;
+  const elAut=document.getElementById('s-aut'); if(elAut) elAut.textContent='0';
+  const elHi=document.getElementById('s-hi'); if(elHi) elHi.textContent='0';
 }
 function updDBstats(){
   document.getElementById('db-p').textContent=Object.keys(DB.productos).length;
@@ -1138,6 +1129,15 @@ function renderLista(tipo){
     ${arr.map((it,i)=>{
       const conIsv=it.precio*(1+(it.isv||0)/100);
       const total =conIsv*it.cantidad;
+      // Buscar info de compras (últimos 2 proveedores)
+      let compraHtml='';
+      if(tipo==='prod'){
+        const ci=buscarCompra(it.cod||it.desc);
+        if(ci&&ci.length){
+          compraHtml=`<div style="font-size:10px;margin-top:1px;color:var(--gr);font-weight:600">🏪 ${ci[0].p} · L ${ci[0].c.toFixed(2)} · ${ci[0].f}</div>`;
+          if(ci.length>1) compraHtml+=`<div style="font-size:9px;color:var(--mu)">🏪 ${ci[1].p} · L ${ci[1].c.toFixed(2)}${ci[1].f?' · '+ci[1].f:''}</div>`;
+        }
+      }
       return `<div class="irow" style="grid-template-columns:1fr 60px 90px 80px 30px">
         <div>
           <div style="font-size:13px;font-weight:500">
@@ -1146,6 +1146,7 @@ function renderLista(tipo){
           <div style="font-size:11px;color:var(--mu);margin-top:2px">
             ${mon} ${fmt(it.precio)} + ${it.isv}% ISV${it.ajusteAnt?` <span style="color:var(--gold);font-weight:600">· Ajustado ${it.ajusteAnt}</span>`:''}
           </div>
+          ${compraHtml}
         </div>
         <div style="text-align:center">
           <input type="number" value="${it.cantidad}" min="0.01" step="0.01"
@@ -1308,7 +1309,6 @@ function recuperarPF(id){
 function renderHist(f={}){
   const{pl=''}=f;
   let list=proformas;
-  // Buscar por placa, cliente o número con un solo campo
   if(pl){
     const q=pl.toLowerCase();
     list=list.filter(p=>
@@ -1317,19 +1317,8 @@ function renderHist(f={}){
       String(p.num).includes(q)
     );
   }
-  const pend=list.filter(p=>p.estado==='pend');
-  const aut=list.filter(p=>p.estado==='autorizado');
-  const hist=list.filter(p=>p.estado==='hist');
-  document.getElementById('cnt-pend').textContent=pend.length?`(${pend.length})`:'';
-  document.getElementById('cnt-aut').textContent=aut.length?`(${aut.length})`:'';
-  document.getElementById('cnt-hist').textContent=hist.length?`(${hist.length})`:'';
-  renderSub('l-pend',pend,true);
-  renderSub('l-aut',aut,false);
-  renderSub('l-hist',hist,false);
-  // Si hay búsqueda activa, mostrar archivadas también
-  if(pl&&hist.length){
-    document.getElementById('arch-section').style.display='block';
-  }
+  document.getElementById('cnt-pend').textContent=list.length?`(${list.length})`:'';
+  renderSub('l-pend',list,true);
 }
 function filtHist(){ renderHist({pl:document.getElementById('bPl').value}); }
 
@@ -1347,26 +1336,20 @@ function toggleArchivadas(){
 
 function renderSub(cid,list,isPend){
   const cont=document.getElementById(cid);
-  const isAut=cid==='l-aut';
-  const isHist=cid==='l-hist';
-  if(!list.length){ cont.innerHTML=`<div class="empty">${isPend?'Sin pendientes':isAut?'Sin autorizadas':'Sin archivadas'}</div>`; return; }
+  if(!list.length){ cont.innerHTML=`<div class="empty">Sin cotizaciones</div>`; return; }
   cont.innerHTML=`<table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Placa</th><th>Vehículo</th><th>Total</th><th>Acciones</th></tr></thead><tbody>
   ${list.map(p=>`<tr>
-    <td><span class="bd ${isPend?'bdg':isAut?'bdgr':'bdb'}">${p.num}</span></td>
+    <td><span class="bd bdg">${p.num}</span></td>
     <td>${fFecha(p.fecha)}</td>
     <td>${p.cli.nom||'—'}</td>
     <td>${p.veh.placa||'—'}</td>
     <td>${[p.veh.ma,p.veh.mo,p.veh.a].filter(Boolean).join(' ')||'—'}</td>
     <td style="color:var(--gold);font-weight:700">${p.moneda==='USD'?'$':'L'} ${fmt(p.total)}</td>
     <td><div class="flex" style="gap:5px">
-      ${isPend?`<button class="btn bgh bsm" onclick="recuperarPF('${p.id}');goPage('nueva')">✏</button>`:''}
-      ${isAut?`<button class="btn bgh bsm" onclick="editarAutorizada('${p.id}')">✏ Editar</button>`:''}
-      ${isHist?`<button class="btn bgh bsm" onclick="recuperarPF('${p.id}');goPage('nueva')">✏ Recuperar</button>`:''}
+      <button class="btn bgh bsm" onclick="recuperarPF('${p.id}');goPage('nueva')">✏</button>
       <button class="btn bg bsm" onclick="pdfDeLista('${p.id}')">📄</button>
       <button class="btn bgh bsm" onclick="duplicarPF('${p.id}')" title="Duplicar proforma">📋</button>
-      ${isPend?`<button class="btn bsm" style="background:var(--gr);color:#fff;border:0" onclick="autorizarPF('${p.id}')">✓ Autorizar</button>`:''}
-      ${isPend?`<button class="btn bgh bsm" onclick="archivarPF('${p.id}')" style="color:var(--mu)">Archivar</button>`:''}
-      ${isPend||isHist||isAut?`<button class="btn br bsm" onclick="elimPF('${p.id}')">✕</button>`:''}
+      <button class="btn br bsm" onclick="elimPF('${p.id}')">✕</button>
     </div></td>
   </tr>`).join('')}</tbody></table>`;
 }
@@ -1432,11 +1415,11 @@ function pdfDeLista(id){ const pf=proformas.find(p=>p.id===id); if(pf) generarPD
 //  DASHBOARD
 // ══════════════════════════════════════════
 function renderDash(){
-  const pend=proformas.filter(p=>p.estado==='pend');
+  const list=proformas;
   const cont=document.getElementById('dash-list');
-  if(!pend.length){ cont.innerHTML='<div class="empty">Sin proformas pendientes</div>'; return; }
+  if(!list.length){ cont.innerHTML='<div class="empty">Sin cotizaciones</div>'; return; }
   cont.innerHTML=`<table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Vehículo</th><th>Placa</th><th>Total</th><th></th></tr></thead><tbody>
-  ${pend.slice(0,8).map(p=>`<tr>
+  ${list.slice(0,8).map(p=>`<tr>
     <td><span class="bd bdg">${p.num}</span></td>
     <td>${fFecha(p.fecha)}</td>
     <td>${p.cli.nom||'—'}</td>
