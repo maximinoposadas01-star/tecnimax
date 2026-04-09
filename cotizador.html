@@ -1363,6 +1363,7 @@ function renderSub(cid,list,isPend){
       ${isAut?`<button class="btn bgh bsm" onclick="editarAutorizada('${p.id}')">✏ Editar</button>`:''}
       ${isHist?`<button class="btn bgh bsm" onclick="recuperarPF('${p.id}');goPage('nueva')">✏ Recuperar</button>`:''}
       <button class="btn bg bsm" onclick="pdfDeLista('${p.id}')">📄</button>
+      <button class="btn bgh bsm" onclick="duplicarPF('${p.id}')" title="Duplicar proforma">📋</button>
       ${isPend?`<button class="btn bsm" style="background:var(--gr);color:#fff;border:0" onclick="autorizarPF('${p.id}')">✓ Autorizar</button>`:''}
       ${isPend?`<button class="btn bgh bsm" onclick="archivarPF('${p.id}')" style="color:var(--mu)">Archivar</button>`:''}
       ${isPend||isHist||isAut?`<button class="btn br bsm" onclick="elimPF('${p.id}')">✕</button>`:''}
@@ -1390,6 +1391,41 @@ function elimPF(id){
   try{ postScript('deletePF',{id}); }catch(e){}
   toast('Cotización eliminada','ok');
 }
+function duplicarPF(id){
+  const orig=proformas.find(p=>p.id===id);
+  if(!orig) return;
+  const vendedor=(orig.vendedor||'').trim();
+  const iniciales=vendedor.split(/\s+/).map(w=>w.charAt(0).toUpperCase()).join('');
+  const nuevoNum=iniciales?iniciales+nextNum:nextNum;
+  const hoy=new Date(), pad2=n=>String(n).padStart(2,'0');
+  const fechaHoy=hoy.getFullYear()+'-'+pad2(hoy.getMonth()+1)+'-'+pad2(hoy.getDate())+' '+pad2(hoy.getHours())+':'+pad2(hoy.getMinutes());
+  const vence=new Date(); vence.setDate(vence.getDate()+30);
+  const copia={
+    id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    num:nuevoNum,
+    estado:'pend',
+    fecha:fechaHoy,
+    vence:vence.toISOString().slice(0,10),
+    vendedor:orig.vendedor||'',
+    moneda:orig.moneda||'HNL',
+    cli:{nom:(orig.cli&&orig.cli.nom)||'', id:(orig.cli&&orig.cli.id)||''},
+    veh:{placa:(orig.veh&&orig.veh.placa)||'', ma:(orig.veh&&orig.veh.ma)||'',
+         mo:(orig.veh&&orig.veh.mo)||'', a:(orig.veh&&orig.veh.a)||'', km:(orig.veh&&orig.veh.km)||''},
+    prods:JSON.parse(JSON.stringify(orig.prods||[])),
+    servs:JSON.parse(JSON.stringify(orig.servs||[])),
+    descuento:orig.descuento||0,
+    notas:orig.notas||'',
+    ganGlobal:orig.ganGlobal||30,
+    subtotal:orig.subtotal||0,
+    total:orig.total||0
+  };
+  proformas.unshift(copia);
+  nextNum++;
+  savePF(); updStats(); renderHist();
+  syncPFtoSheet(copia);
+  syncAllPFtoSheet();
+  toast('📋 Proforma N°'+orig.num+' duplicada → nueva N°'+copia.num,'ok');
+}
 function pdfDeLista(id){ const pf=proformas.find(p=>p.id===id); if(pf) generarPDF(pf); }
 
 // ══════════════════════════════════════════
@@ -1407,7 +1443,7 @@ function renderDash(){
     <td>${[p.veh.ma,p.veh.mo,p.veh.a].filter(Boolean).join(' ')||'—'}</td>
     <td>${p.veh.placa||'—'}</td>
     <td style="color:var(--gold);font-weight:700">${p.moneda==='USD'?'$':'L'} ${fmt(p.total)}</td>
-    <td><button class="btn bgh bsm" onclick="recuperarPF('${p.id}');goPage('nueva')">✏ Modificar</button></td>
+    <td><button class="btn bgh bsm" onclick="recuperarPF('${p.id}');goPage('nueva')">✏ Modificar</button> <button class="btn bgh bsm" onclick="duplicarPF('${p.id}')" title="Duplicar">📋</button></td>
   </tr>`).join('')}</tbody></table>`;
 }
 
