@@ -1129,10 +1129,22 @@ function renderLista(tipo){
     ${arr.map((it,i)=>{
       const conIsv=it.precio*(1+(it.isv||0)/100);
       const total =conIsv*it.cantidad;
-      // Buscar info de compras (últimos 2 proveedores)
+      // Buscar info de compras (últimos 2 proveedores) — solo match exacto o por código
       let compraHtml='';
       if(tipo==='prod'){
-        const ci=buscarCompra(it.cod||it.desc);
+        const d=(it.cod||it.desc||'').toUpperCase().trim();
+        let ci=null;
+        if(d&&Object.keys(DBcompras).length){
+          // 1. Exacto por código o nombre
+          if(DBcompras[d]) ci=DBcompras[d];
+          // 2. Buscar clave que contenga el nombre completo (>=10 chars)
+          if(!ci&&d.length>=10){
+            const keys=Object.keys(DBcompras);
+            for(let k=0;k<keys.length;k++){
+              if(keys[k]===d||keys[k].indexOf(d)===0||d.indexOf(keys[k])===0){ci=DBcompras[keys[k]];break;}
+            }
+          }
+        }
         if(ci&&ci.length){
           compraHtml=`<div style="font-size:10px;margin-top:1px;color:var(--gr);font-weight:600">🏪 ${ci[0].p} · L ${ci[0].c.toFixed(2)} · ${ci[0].f}</div>`;
           if(ci.length>1) compraHtml+=`<div style="font-size:9px;color:var(--mu)">🏪 ${ci[1].p} · L ${ci[1].c.toFixed(2)}${ci[1].f?' · '+ci[1].f:''}</div>`;
