@@ -732,8 +732,8 @@ function goPage(id){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
   document.getElementById('page-'+id).classList.add('on');
   ['dash','nueva','hist','pedidos','imp'].forEach((n,i)=>{ if(n===id) document.querySelectorAll('.tab')[i].classList.add('on'); });
-  if(id==='hist') renderHist();
-  if(id==='dash'){ renderDash(); updStats(); }
+  if(id==='hist'){ loadPFfromSheet().then(()=>renderHist()); }
+  if(id==='dash'){ loadPFfromSheet().then(()=>{ renderDash(); updStats(); }); }
   if(id==='imp'){ updDBstats(); cargarConfig(); }
   if(id==='nueva'&&!pfActual.editMode) initPF();
   if(id==='pedidos') cargarPedidos();
