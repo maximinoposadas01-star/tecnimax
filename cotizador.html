@@ -624,15 +624,31 @@ async function loadDBfromSheet(){
 }
 
 function savePF(){
-  // Todo vive en Sheets — sin localStorage
+  // Noop — todo se guarda directo a Sheets via syncPFtoSheet
 }
-// Sincronizar UNA proforma a Sheets
-function syncPFtoSheet(pf){
-  postScript('savePF',pf).catch(()=>{});
+// Sincronizar UNA proforma a Sheets — con retry y feedback
+async function syncPFtoSheet(pf){
+  for(let intento=1;intento<=3;intento++){
+    try{
+      const r=await postScript('savePF',pf);
+      if(r&&r.ok) return true;
+    }catch(e){}
+    if(intento<3) await new Promise(r=>setTimeout(r,1000*intento));
+  }
+  toast('⚠️ Error guardando en Sheets — reintenta con Sincronizar','err');
+  return false;
 }
-// Sincronizar TODAS las proformas a Sheets (para cambios de estado)
-function syncAllPFtoSheet(){
-  postScript('saveAllPF',{proformas:proformas,nextNum:nextNum}).catch(()=>{});
+// Sincronizar TODAS las proformas a Sheets
+async function syncAllPFtoSheet(){
+  for(let intento=1;intento<=3;intento++){
+    try{
+      const r=await postScript('saveAllPF',{proformas:proformas,nextNum:nextNum});
+      if(r&&r.ok) return true;
+    }catch(e){}
+    if(intento<3) await new Promise(r=>setTimeout(r,1000*intento));
+  }
+  toast('⚠️ Error sincronizando todas — reintenta con Sincronizar','err');
+  return false;
 }
 function loadPF(){
   // Cargar desde Sheets al iniciar
@@ -689,50 +705,17 @@ async function sincronizarPFs(){
 
 async function loadPFfromSheet(){
   try{
-    // 1. Leer proformas de Sheets
     const json=await fetchScript('action=readPF');
-    if(json&&json.ok&&json.data&&json.data.length){
-      const sheetPFs=json.data;
-      sheetPFs.forEach(spf=>{
-        const local=proformas.find(p=>p.id===spf.id);
-        if(!local){
-          // No existe localmente, agregar desde Sheets
-          proformas.push(spf);
-        } else {
-          // Existe localmente — sincronizar estado desde Sheets
-          // Sheets gana si tiene estado más avanzado
-          var prioridad={pend:1,autorizado:2,hist:3};
-          var sP=prioridad[spf.estado]||0;
-          var lP=prioridad[local.estado]||0;
-          if(sP>lP) local.estado=spf.estado;
-          // Actualizar datos si Sheets tiene versión más reciente
-          if(spf.prods&&spf.prods.length) local.prods=spf.prods;
-          if(spf.servs&&spf.servs.length) local.servs=spf.servs;
-          if(spf.cli) local.cli=spf.cli;
-          if(spf.veh) local.veh=spf.veh;
-          if(spf.total) local.total=spf.total;
-          if(spf.subtotal) local.subtotal=spf.subtotal;
-        }
-      });
+    if(json&&json.ok&&json.data){
+      // Sheets es la fuente de verdad — reemplazar datos locales
+      proformas=json.data;
+      // Actualizar nextNum
+      proformas.forEach(p=>{ const n=parseInt(String(p.num).replace(/^[A-Z]+/i,'')); if(n>=nextNum) nextNum=n+1; });
+      updStats();
+      if(document.getElementById('page-dash').classList.contains('on')) renderDash();
+      if(document.getElementById('page-hist').classList.contains('on')) renderHist();
     }
-    
-    // 2. Leer pedidos para marcar como autorizadas las que están en pedidos
-    const json2=await fetchScript('action=read');
-    if(json2&&json2.ok&&json2.data){
-      const numsEnPedidos=new Set(json2.data.map(p=>String(p.Proforma)));
-      proformas.forEach(pf=>{
-        if(numsEnPedidos.has(String(pf.num))&&pf.estado==='pend'){
-          pf.estado='autorizado';
-        }
-      });
-    }
-    
-    // Actualizar nextNum (extraer parte numérica si tiene prefijo de iniciales)
-    proformas.forEach(p=>{ const n=parseInt(String(p.num).replace(/^[A-Z]+/i,'')); if(n>=nextNum) nextNum=n+1; });
-    updStats();
-    if(document.getElementById('page-dash').classList.contains('on')) renderDash();
-    if(document.getElementById('page-hist').classList.contains('on')) renderHist();
-  }catch(e){ /* silenciar si no hay conexión */ }
+  }catch(e){ console.warn('Error cargando proformas:',e); }
 }
 
 function limpiarDB(){
@@ -1229,7 +1212,7 @@ function getMon(){ return document.getElementById('pf-mon')?.value==='USD'?'$':'
 // ══════════════════════════════════════════
 //  GUARDAR PROFORMA
 // ══════════════════════════════════════════
-function guardarPF(){
+async function guardarPF(){
   const nom  =document.getElementById('cli-nom').value.trim();
   const placa=document.getElementById('veh-placa').value.trim();
   if(!nom&&!placa){ toast('Ingresa al menos nombre del cliente o placa','err'); return null; }
@@ -1265,21 +1248,21 @@ function guardarPF(){
   if(pfActual.id){ const idx=proformas.findIndex(p=>p.id===pfActual.id); if(idx>=0) proformas[idx]=pf; }
   else{ proformas.unshift(pf); nextNum++; }
   pfActual.id=pf.id; pfActual.editMode=true;
-  savePF(); updStats();
-  syncPFtoSheet(pf);
+  updStats();
   document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
   document.getElementById('pf-title').textContent='Modificar Proforma';
-  toast(`✅ Proforma N° ${pf.num} guardada — ve a Cotización para verla`,'ok');
+  toast('⏳ Guardando proforma N° '+pf.num+'...','ok');
+  const ok=await syncPFtoSheet(pf);
+  if(ok) toast(`✅ Proforma N° ${pf.num} guardada en Sheets`,'ok');
   return pf;
 }
 
 // ══════════════════════════════════════════
 //  IMPRIMIR → PDF → luego limpia
 // ══════════════════════════════════════════
-function imprimirPF(){
-  const pf=guardarPF(); if(!pf) return;
+async function imprimirPF(){
+  const pf=await guardarPF(); if(!pf) return;
   generarPDF(pf);
-  savePF(); updStats();
   toast('✅ PDF generado','ok');
   // Limpiar formulario después de imprimir
   setTimeout(()=>{ initPF(); pfActual.editMode=false; },1000);
@@ -1379,14 +1362,21 @@ function editarAutorizada(id){
   goPage('nueva');
   toast('Editando cotización autorizada — al guardar se actualizará','ok');
 }
-function elimPF(id){
+async function elimPF(id){
   if(!confirm('¿Eliminar esta cotización?'))return;
   proformas=proformas.filter(p=>p.id!==id);
-  savePF(); updStats(); renderHist();
-  try{ postScript('deletePF',{id}); }catch(e){}
-  toast('Cotización eliminada','ok');
+  updStats(); renderHist();
+  toast('⏳ Eliminando...','ok');
+  for(let i=1;i<=3;i++){
+    try{
+      const r=await postScript('deletePF',{id});
+      if(r&&r.ok){ toast('✅ Cotización eliminada','ok'); return; }
+    }catch(e){}
+    if(i<3) await new Promise(r=>setTimeout(r,1000*i));
+  }
+  toast('⚠️ Error eliminando en Sheets — reintenta con Sincronizar','err');
 }
-function duplicarPF(id){
+async function duplicarPF(id){
   const orig=proformas.find(p=>p.id===id);
   if(!orig) return;
   const vendedor=(orig.vendedor||'').trim();
@@ -1416,10 +1406,10 @@ function duplicarPF(id){
   };
   proformas.unshift(copia);
   nextNum++;
-  savePF(); updStats(); renderHist();
-  syncPFtoSheet(copia);
-  syncAllPFtoSheet();
-  toast('📋 Proforma N°'+orig.num+' duplicada → nueva N°'+copia.num,'ok');
+  updStats(); renderHist();
+  toast('⏳ Duplicando proforma N°'+orig.num+'...','ok');
+  const ok=await syncPFtoSheet(copia);
+  if(ok) toast('📋 Proforma N°'+orig.num+' duplicada → nueva N°'+copia.num,'ok');
 }
 function pdfDeLista(id){ const pf=proformas.find(p=>p.id===id); if(pf) generarPDF(pf); }
 
