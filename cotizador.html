@@ -706,15 +706,22 @@ async function sincronizarPFs(){
 async function loadPFfromSheet(){
   try{
     const json=await fetchScript('action=readPF');
-    if(json&&json.ok&&json.data){
-      // Sheets es la fuente de verdad — reemplazar datos locales
-      proformas=json.data;
+    if(json&&json.ok&&json.data&&json.data.length){
+      // Merge: Sheets gana pero no borramos locales que no estén en Sheets
+      const sheetIds=new Set(json.data.map(p=>p.id));
+      // Agregar o actualizar desde Sheets
+      json.data.forEach(spf=>{
+        const idx=proformas.findIndex(p=>p.id===spf.id);
+        if(idx>=0) proformas[idx]=spf;
+        else proformas.push(spf);
+      });
       // Actualizar nextNum
       proformas.forEach(p=>{ const n=parseInt(String(p.num).replace(/^[A-Z]+/i,'')); if(n>=nextNum) nextNum=n+1; });
       updStats();
       if(document.getElementById('page-dash').classList.contains('on')) renderDash();
       if(document.getElementById('page-hist').classList.contains('on')) renderHist();
     }
+    // Si json.data está vacío o null, NO tocar proformas locales
   }catch(e){ console.warn('Error cargando proformas:',e); }
 }
 
