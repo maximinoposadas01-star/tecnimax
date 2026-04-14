@@ -275,8 +275,14 @@ tbody tr:hover td{background:var(--s2)}
 <!-- ═══ DASHBOARD ═══ -->
 <div id="page-dash" class="page on">
   <div class="flb">
-    <div><div class="ph">Panel Principal</div><div class="ps">Tecnimax S. DE. R.L</div></div>
-    <button class="btn bg" onclick="goPage('nueva')">＋ Nueva Proforma</button>
+    <div>
+      <div class="ph">Panel Principal</div>
+      <div class="ps" id="sync-status">Tecnimax S. DE. R.L</div>
+    </div>
+    <div class="flex">
+      <button class="btn bgh" id="btn-sync-dash" onclick="sincronizarTodo()">🔄 Sincronizar</button>
+      <button class="btn bg" onclick="goPage('nueva')">＋ Nueva Proforma</button>
+    </div>
   </div>
   <div class="stats">
     <div class="stat"><div class="sv" id="s-p">0</div><div class="sl">Productos en base</div></div>
@@ -651,8 +657,53 @@ async function syncAllPFtoSheet(){
   return false;
 }
 function loadPF(){
-  // Cargar desde Sheets al iniciar
-  setTimeout(()=>loadPFfromSheet(),600);
+  // 1. Cargar backup local inmediatamente
+  loadPFfromLocalBackup();
+  loadPendingSync();
+  setTimeout(()=>updSyncIndicator(),100);
+  // 2. Al iniciar: SUBIR locales primero, luego bajar de Sheets
+  setTimeout(()=>sincronizarTodo(true),800);
+  // 3. Auto-sync cada 60 segundos
+  setInterval(()=>sincronizarTodo(true),60000);
+}
+
+// Función principal — sube locales a Sheets Y baja todo de Sheets
+async function sincronizarTodo(silencioso=false){
+  const btnDash=document.getElementById('btn-sync-dash');
+  const btnHist=document.getElementById('btn-sync');
+  const status=document.getElementById('sync-status');
+
+  if(!silencioso){
+    if(btnDash){ btnDash.textContent='⏳...'; btnDash.disabled=true; }
+    if(btnHist){ btnHist.textContent='⏳ Sincronizando...'; btnHist.disabled=true; }
+  }
+  if(status) status.textContent='⏳ Sincronizando...';
+
+  try{
+    // PASO 1: Subir todas las locales a Sheets (no perder nada de ninguna PC)
+    if(proformas.length>0){
+      await postScript('saveAllPF',{proformas:proformas,nextNum:nextNum});
+    }
+    // PASO 2: Bajar todo desde Sheets (incluye las de otras PCs)
+    await loadPFfromSheet();
+
+    const ahora=new Date();
+    const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones';
+    if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
+  }catch(e){
+    if(status) status.textContent='⚠️ Sin conexión — datos locales';
+    if(!silencioso) toast('Error al sincronizar — revisa conexión','err');
+  }
+
+  if(btnDash){ btnDash.textContent='🔄 Sincronizar'; btnDash.disabled=false; }
+  if(btnHist){ btnHist.textContent='🔄 Sincronizar'; btnHist.disabled=false; }
+}
+
+// Compatibilidad con botón de Cotizaciones
+async function sincronizarPFs(){
+  await sincronizarTodo(false);
+  if(document.getElementById('page-hist').classList.contains('on')) renderHist();
 }
 
 // Helper robusto para leer del Apps Script (maneja redirects de Google)
@@ -684,59 +735,26 @@ async function postScript(action, data){
   return {ok:true};
 }
 
-// Cargar proformas de Sheets y sincronizar estados
-async function sincronizarPFs(){
-  const btn=document.getElementById('btn-sync');
-  btn.textContent='⏳ Sincronizando...';
-  btn.disabled=true;
-  try{
-    // Primero subir las locales a Sheets
-    await postScript('saveAllPF',{proformas:proformas,nextNum:nextNum});
-    // Luego descargar todo desde Sheets
-    await loadPFfromSheet();
-    renderHist();
-    toast('✅ Sincronizado — '+proformas.length+' proformas','ok');
-  }catch(e){
-    toast('Error al sincronizar','err');
-  }
-  btn.textContent='🔄 Sincronizar';
-  btn.disabled=false;
-}
-
 async function loadPFfromSheet(){
   try{
     const json=await fetchScript('action=readPF');
     if(json&&json.ok&&json.data&&json.data.length){
-      console.log('📥 Sheets devolvió',json.data.length,'proformas (local:',proformas.length,')');
-      // Si Sheets tiene más que local, o tiene datos más nuevos → hacer merge completo
       json.data.forEach(spf=>{
         const idx=proformas.findIndex(p=>p.id===spf.id);
         if(idx>=0) proformas[idx]=spf;
         else proformas.push(spf);
       });
-      // Eliminar locales que Sheets ya no tiene (fueron eliminadas en Sheets)
-      // SOLO si Sheets devolvió una cantidad razonable (>0) para evitar borrar por error de red
-      if(json.data.length>0){
-        const sheetIds=new Set(json.data.map(p=>p.id));
-        // No eliminar — solo marcar las que Sheets tiene para referencia
-        // (conservamos todas para no perder nada)
-      }
-      // ORDENAR siempre por número descendente (más reciente primero)
+      // Ordenar por número descendente siempre
       proformas.sort((a,b)=>{
         const na=parseInt(String(a.num).replace(/^[A-Z]+/i,''))||0;
         const nb=parseInt(String(b.num).replace(/^[A-Z]+/i,''))||0;
         return nb-na;
       });
-      // Actualizar nextNum
       proformas.forEach(p=>{ const n=parseInt(String(p.num).replace(/^[A-Z]+/i,'')); if(n>=nextNum) nextNum=n+1; });
-      savePF(); // actualizar backup local
+      savePF();
       updStats();
       if(document.getElementById('page-dash').classList.contains('on')) renderDash();
       if(document.getElementById('page-hist').classList.contains('on')) renderHist();
-      if(typeof updLastRefreshLabel==='function') updLastRefreshLabel();
-      console.log('✅ Total en memoria:',proformas.length,'proformas');
-    } else {
-      console.warn('⚠️ Sheets devolvió vacío o error — conservando',proformas.length,'locales');
     }
   }catch(e){ console.warn('Error cargando proformas:',e); }
 }
@@ -2289,6 +2307,21 @@ try{ loadPF(); }catch(e){ console.error("loadPF error:",e); }
 try{ updStats(); }catch(e){ console.error("updStats error:",e); }
 try{ cargarConfig(); }catch(e){ console.error("cargarConfig error:",e); }
 try{ initComprasInfo(); }catch(e){ console.error("initComprasInfo error:",e); }
+
+// Sincronizar al volver a la pestaña o ventana
+let _lastAutoSync=0;
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&Date.now()-_lastAutoSync>20000){
+    _lastAutoSync=Date.now();
+    sincronizarTodo(true);
+  }
+});
+window.addEventListener('focus',()=>{
+  if(Date.now()-_lastAutoSync>20000){
+    _lastAutoSync=Date.now();
+    sincronizarTodo(true);
+  }
+});
 
 function loadComprasDB(){
   if(Object.keys(DBcompras).length>0) return; // ya cargado
