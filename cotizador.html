@@ -270,18 +270,19 @@ tbody tr:hover td{background:var(--s2)}
     <button class="tab"     data-page="pedidos">Pedidos</button>
     <button class="tab"     data-page="imp">Config</button>
   </div>
-  <div id="sync-indicator" style="display:none;align-items:center;gap:6px;font-size:11px;color:#fbbf24;white-space:nowrap;flex-shrink:0;cursor:pointer" onclick="sincronizarPFsManual()" title="Hay cotizaciones sin subir — toca para reintentar">
-    <span style="animation:spin 1.2s linear infinite;display:inline-block">⟳</span>
-    <span id="sync-count">0 pendientes</span>
-  </div>
 </nav>
-<style>@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>
 
 <!-- ═══ DASHBOARD ═══ -->
 <div id="page-dash" class="page on">
   <div class="flb">
-    <div><div class="ph">Panel Principal</div><div class="ps">Tecnimax S. DE. R.L</div></div>
-    <button class="btn bg" onclick="goPage('nueva')">＋ Nueva Proforma</button>
+    <div>
+      <div class="ph">Panel Principal</div>
+      <div class="ps">Tecnimax S. DE. R.L &nbsp;·&nbsp; <span id="dash-last-upd" style="color:var(--mu)">Actualizando...</span></div>
+    </div>
+    <div class="flex">
+      <button class="btn bgh" id="btn-refresh-dash" onclick="refrescarManual()">🔄 Actualizar</button>
+      <button class="btn bg" onclick="goPage('nueva')">＋ Nueva Proforma</button>
+    </div>
   </div>
   <div class="stats">
     <div class="stat"><div class="sv" id="s-p">0</div><div class="sl">Productos en base</div></div>
@@ -428,7 +429,10 @@ tbody tr:hover td{background:var(--s2)}
 <!-- ═══ COTIZACIÓN ═══ -->
 <div id="page-hist" class="page">
   <div class="flb" style="margin-bottom:14px">
-    <div><div class="ph">Cotización</div><div class="ps">Gestionar cotizaciones y pedidos</div></div>
+    <div>
+      <div class="ph">Cotización</div>
+      <div class="ps">Gestionar cotizaciones &nbsp;·&nbsp; <span id="hist-last-upd" style="color:var(--mu)"></span></div>
+    </div>
     <div class="flex" style="gap:6px">
       <button class="btn bgh" onclick="sincronizarPFs()" id="btn-sync">🔄 Sincronizar</button>
       <button class="btn bg" onclick="goPage('nueva')">＋ Nueva</button>
@@ -628,103 +632,19 @@ async function loadDBfromSheet(){
   }catch(e){}
 }
 
-// ══════════════════════════════════════════
-//  BACKUP LOCAL — red de seguridad en localStorage
-// ══════════════════════════════════════════
 function savePF(){
-  // Guardar copia de seguridad en localStorage siempre
-  try{
-    localStorage.setItem('tm_proformas_backup', JSON.stringify(proformas));
-    localStorage.setItem('tm_nextNum_backup', String(nextNum));
-    localStorage.setItem('tm_backup_ts', new Date().toISOString());
-  }catch(e){ console.warn('No se pudo guardar backup local:',e); }
+  // Noop — todo se guarda directo a Sheets via syncPFtoSheet
 }
-
-function loadPFfromLocalBackup(){
-  try{
-    const raw=localStorage.getItem('tm_proformas_backup');
-    const nn=localStorage.getItem('tm_nextNum_backup');
-    if(raw){
-      const arr=JSON.parse(raw);
-      if(Array.isArray(arr)&&arr.length){
-        proformas=arr;
-        if(nn) nextNum=Math.max(nextNum,parseInt(nn)||nextNum);
-        console.log('🔒 Backup local cargado:',arr.length,'proformas');
-        return true;
-      }
-    }
-  }catch(e){}
-  return false;
-}
-
-// Cola de proformas que fallaron al subirse a Sheets
-let _pendingSync=[];
-function addToPendingSync(pf){
-  _pendingSync=_pendingSync.filter(p=>p.id!==pf.id);
-  _pendingSync.push(pf);
-  try{ localStorage.setItem('tm_pending_sync',JSON.stringify(_pendingSync)); }catch(e){}
-  updSyncIndicator();
-}
-function removeFromPendingSync(id){
-  _pendingSync=_pendingSync.filter(p=>p.id!==id);
-  try{ localStorage.setItem('tm_pending_sync',JSON.stringify(_pendingSync)); }catch(e){}
-  updSyncIndicator();
-}
-function loadPendingSync(){
-  try{
-    const raw=localStorage.getItem('tm_pending_sync');
-    if(raw) _pendingSync=JSON.parse(raw)||[];
-  }catch(e){ _pendingSync=[]; }
-}
-async function flushPendingSync(){
-  if(!_pendingSync.length) return;
-  const cola=[..._pendingSync];
-  for(const pf of cola){
-    try{
-      const r=await postScript('savePF',pf);
-      if(r&&r.ok){ removeFromPendingSync(pf.id); }
-    }catch(e){}
-  }
-  updSyncIndicator();
-  if(_pendingSync.length===0) console.log('✅ Cola de pendientes vaciada');
-}
-
-function updSyncIndicator(){
-  const ind=document.getElementById('sync-indicator');
-  const cnt=document.getElementById('sync-count');
-  if(!ind) return;
-  if(_pendingSync.length>0){
-    ind.style.display='flex';
-    cnt.textContent=_pendingSync.length+' pendiente'+ (_pendingSync.length>1?'s':'');
-  } else {
-    ind.style.display='none';
-  }
-}
-
-async function sincronizarPFsManual(){
-  if(_pendingSync.length===0){ toast('✅ Todo sincronizado','ok'); return; }
-  toast('⏳ Subiendo '+_pendingSync.length+' cotización(es)...','ok');
-  await flushPendingSync();
-  if(_pendingSync.length===0) toast('✅ Todo sincronizado con Sheets','ok');
-  else toast('⚠️ Aún hay '+_pendingSync.length+' sin subir — revisa conexión','err');
-}
-// Sincronizar UNA proforma a Sheets — con retry, cola y backup local
+// Sincronizar UNA proforma a Sheets — con retry y feedback
 async function syncPFtoSheet(pf){
-  savePF(); // backup local inmediato antes de intentar subir
   for(let intento=1;intento<=3;intento++){
     try{
       const r=await postScript('savePF',pf);
-      if(r&&r.ok){
-        removeFromPendingSync(pf.id);
-        savePF(); // actualizar backup tras éxito
-        return true;
-      }
+      if(r&&r.ok) return true;
     }catch(e){}
     if(intento<3) await new Promise(r=>setTimeout(r,1000*intento));
   }
-  // Falló: guardar en cola para reintento automático
-  addToPendingSync(pf);
-  toast('⚠️ Sin conexión — cotización guardada localmente, se subirá al reconectar','err');
+  toast('⚠️ Error guardando en Sheets — reintenta con Sincronizar','err');
   return false;
 }
 // Sincronizar TODAS las proformas a Sheets
@@ -740,19 +660,8 @@ async function syncAllPFtoSheet(){
   return false;
 }
 function loadPF(){
-  // 1. Cargar backup local inmediatamente (sin esperar red)
-  loadPFfromLocalBackup();
-  loadPendingSync();
-  setTimeout(()=>updSyncIndicator(),100);
-  // 2. Luego sincronizar con Sheets y reconciliar
+  // Cargar desde Sheets al iniciar
   setTimeout(()=>loadPFfromSheet(),600);
-  // 3. Reintentar cola de pendientes cada 30 segundos
-  setInterval(()=>{
-    if(_pendingSync.length>0){
-      console.log('🔄 Reintentando',_pendingSync.length,'pendientes...');
-      flushPendingSync();
-    }
-  },30000);
 }
 
 // Helper robusto para leer del Apps Script (maneja redirects de Google)
@@ -807,51 +716,23 @@ async function loadPFfromSheet(){
   try{
     const json=await fetchScript('action=readPF');
     if(json&&json.ok&&json.data&&json.data.length){
+      // Merge: Sheets gana pero no borramos locales que no estén en Sheets
       const sheetIds=new Set(json.data.map(p=>p.id));
-      // 1. Agregar o actualizar desde Sheets
+      // Agregar o actualizar desde Sheets
       json.data.forEach(spf=>{
         const idx=proformas.findIndex(p=>p.id===spf.id);
         if(idx>=0) proformas[idx]=spf;
         else proformas.push(spf);
       });
-      // 2. RECONCILIACIÓN: subir proformas locales que no están en Sheets
-      const soloLocales=proformas.filter(p=>!sheetIds.has(p.id));
-      if(soloLocales.length){
-        console.log('🔄 Reconciliando',soloLocales.length,'proformas locales no encontradas en Sheets...');
-        soloLocales.forEach(pf=>addToPendingSync(pf));
-        setTimeout(()=>flushPendingSync(),2000);
-      }
-      // 3. Actualizar nextNum
+      // Actualizar nextNum
       proformas.forEach(p=>{ const n=parseInt(String(p.num).replace(/^[A-Z]+/i,'')); if(n>=nextNum) nextNum=n+1; });
-      savePF(); // actualizar backup local con datos frescos
       updStats();
       if(document.getElementById('page-dash').classList.contains('on')) renderDash();
       if(document.getElementById('page-hist').classList.contains('on')) renderHist();
-    } else {
-      // Sheets vacío o sin respuesta — cargar desde backup local si hay
-      if(proformas.length===0){
-        const restored=loadPFfromLocalBackup();
-        if(restored){
-          toast('📱 Sin conexión — mostrando cotizaciones guardadas localmente','ok');
-          updStats();
-          if(document.getElementById('page-dash').classList.contains('on')) renderDash();
-          if(document.getElementById('page-hist').classList.contains('on')) renderHist();
-        }
-      }
+      if(typeof updLastRefreshLabel==='function') updLastRefreshLabel();
     }
-  }catch(e){
-    console.warn('Error cargando proformas:',e);
-    // Error de red — intentar desde backup local
-    if(proformas.length===0){
-      const restored=loadPFfromLocalBackup();
-      if(restored){
-        toast('📱 Sin conexión — mostrando cotizaciones del dispositivo','ok');
-        updStats();
-        if(document.getElementById('page-dash').classList.contains('on')) renderDash();
-        if(document.getElementById('page-hist').classList.contains('on')) renderHist();
-      }
-    }
-  }
+    // Si json.data está vacío o null, NO tocar proformas locales
+  }catch(e){ console.warn('Error cargando proformas:',e); }
 }
 
 function limpiarDB(){
@@ -2402,6 +2283,49 @@ try{ loadPF(); }catch(e){ console.error("loadPF error:",e); }
 try{ updStats(); }catch(e){ console.error("updStats error:",e); }
 try{ cargarConfig(); }catch(e){ console.error("cargarConfig error:",e); }
 try{ initComprasInfo(); }catch(e){ console.error("initComprasInfo error:",e); }
+
+// ══════════════════════════════════════════
+//  AUTO-REFRESH — sincroniza cotizaciones automáticamente
+// ══════════════════════════════════════════
+let _lastRefresh = 0;
+async function autoRefreshPF(){
+  const ahora = Date.now();
+  // Evitar refrescos muy seguidos (mínimo 20 segundos entre refrescos)
+  if(ahora - _lastRefresh < 20000) return;
+  _lastRefresh = ahora;
+  await loadPFfromSheet();
+}
+
+// 1. Refrescar cada 60 segundos en segundo plano
+setInterval(()=> autoRefreshPF(), 60000);
+
+// 2. Refrescar al volver a la pestaña/ventana (el caso más común)
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible') autoRefreshPF();
+});
+
+// 3. Refrescar al recuperar el foco de la ventana
+window.addEventListener('focus', ()=> autoRefreshPF());
+
+function updLastRefreshLabel(){
+  const ahora = new Date();
+  const hhmm = ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
+  const txt = 'Actualizado: '+hhmm;
+  const d = document.getElementById('dash-last-upd');
+  const h = document.getElementById('hist-last-upd');
+  if(d) d.textContent = txt;
+  if(h) h.textContent = txt;
+}
+
+async function refrescarManual(){
+  const btn = document.getElementById('btn-refresh-dash');
+  if(btn){ btn.textContent='⏳'; btn.disabled=true; }
+  _lastRefresh = 0; // forzar aunque sea reciente
+  await loadPFfromSheet();
+  updLastRefreshLabel();
+  if(btn){ btn.textContent='🔄 Actualizar'; btn.disabled=false; }
+  toast('✅ Cotizaciones actualizadas','ok');
+}
 
 function loadComprasDB(){
   if(Object.keys(DBcompras).length>0) return; // ya cargado
