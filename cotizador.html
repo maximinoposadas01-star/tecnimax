@@ -270,7 +270,12 @@ tbody tr:hover td{background:var(--s2)}
     <button class="tab"     data-page="pedidos">Pedidos</button>
     <button class="tab"     data-page="imp">Config</button>
   </div>
+  <div id="sync-indicator" style="display:none;align-items:center;gap:6px;font-size:11px;color:#fbbf24;white-space:nowrap;flex-shrink:0;cursor:pointer" onclick="sincronizarPFsManual()" title="Hay cotizaciones sin subir — toca para reintentar">
+    <span style="animation:spin 1.2s linear infinite;display:inline-block">⟳</span>
+    <span id="sync-count">0 pendientes</span>
+  </div>
 </nav>
+<style>@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>
 
 <!-- ═══ DASHBOARD ═══ -->
 <div id="page-dash" class="page on">
@@ -623,19 +628,103 @@ async function loadDBfromSheet(){
   }catch(e){}
 }
 
+// ══════════════════════════════════════════
+//  BACKUP LOCAL — red de seguridad en localStorage
+// ══════════════════════════════════════════
 function savePF(){
-  // Noop — todo se guarda directo a Sheets via syncPFtoSheet
+  // Guardar copia de seguridad en localStorage siempre
+  try{
+    localStorage.setItem('tm_proformas_backup', JSON.stringify(proformas));
+    localStorage.setItem('tm_nextNum_backup', String(nextNum));
+    localStorage.setItem('tm_backup_ts', new Date().toISOString());
+  }catch(e){ console.warn('No se pudo guardar backup local:',e); }
 }
-// Sincronizar UNA proforma a Sheets — con retry y feedback
+
+function loadPFfromLocalBackup(){
+  try{
+    const raw=localStorage.getItem('tm_proformas_backup');
+    const nn=localStorage.getItem('tm_nextNum_backup');
+    if(raw){
+      const arr=JSON.parse(raw);
+      if(Array.isArray(arr)&&arr.length){
+        proformas=arr;
+        if(nn) nextNum=Math.max(nextNum,parseInt(nn)||nextNum);
+        console.log('🔒 Backup local cargado:',arr.length,'proformas');
+        return true;
+      }
+    }
+  }catch(e){}
+  return false;
+}
+
+// Cola de proformas que fallaron al subirse a Sheets
+let _pendingSync=[];
+function addToPendingSync(pf){
+  _pendingSync=_pendingSync.filter(p=>p.id!==pf.id);
+  _pendingSync.push(pf);
+  try{ localStorage.setItem('tm_pending_sync',JSON.stringify(_pendingSync)); }catch(e){}
+  updSyncIndicator();
+}
+function removeFromPendingSync(id){
+  _pendingSync=_pendingSync.filter(p=>p.id!==id);
+  try{ localStorage.setItem('tm_pending_sync',JSON.stringify(_pendingSync)); }catch(e){}
+  updSyncIndicator();
+}
+function loadPendingSync(){
+  try{
+    const raw=localStorage.getItem('tm_pending_sync');
+    if(raw) _pendingSync=JSON.parse(raw)||[];
+  }catch(e){ _pendingSync=[]; }
+}
+async function flushPendingSync(){
+  if(!_pendingSync.length) return;
+  const cola=[..._pendingSync];
+  for(const pf of cola){
+    try{
+      const r=await postScript('savePF',pf);
+      if(r&&r.ok){ removeFromPendingSync(pf.id); }
+    }catch(e){}
+  }
+  updSyncIndicator();
+  if(_pendingSync.length===0) console.log('✅ Cola de pendientes vaciada');
+}
+
+function updSyncIndicator(){
+  const ind=document.getElementById('sync-indicator');
+  const cnt=document.getElementById('sync-count');
+  if(!ind) return;
+  if(_pendingSync.length>0){
+    ind.style.display='flex';
+    cnt.textContent=_pendingSync.length+' pendiente'+ (_pendingSync.length>1?'s':'');
+  } else {
+    ind.style.display='none';
+  }
+}
+
+async function sincronizarPFsManual(){
+  if(_pendingSync.length===0){ toast('✅ Todo sincronizado','ok'); return; }
+  toast('⏳ Subiendo '+_pendingSync.length+' cotización(es)...','ok');
+  await flushPendingSync();
+  if(_pendingSync.length===0) toast('✅ Todo sincronizado con Sheets','ok');
+  else toast('⚠️ Aún hay '+_pendingSync.length+' sin subir — revisa conexión','err');
+}
+// Sincronizar UNA proforma a Sheets — con retry, cola y backup local
 async function syncPFtoSheet(pf){
+  savePF(); // backup local inmediato antes de intentar subir
   for(let intento=1;intento<=3;intento++){
     try{
       const r=await postScript('savePF',pf);
-      if(r&&r.ok) return true;
+      if(r&&r.ok){
+        removeFromPendingSync(pf.id);
+        savePF(); // actualizar backup tras éxito
+        return true;
+      }
     }catch(e){}
     if(intento<3) await new Promise(r=>setTimeout(r,1000*intento));
   }
-  toast('⚠️ Error guardando en Sheets — reintenta con Sincronizar','err');
+  // Falló: guardar en cola para reintento automático
+  addToPendingSync(pf);
+  toast('⚠️ Sin conexión — cotización guardada localmente, se subirá al reconectar','err');
   return false;
 }
 // Sincronizar TODAS las proformas a Sheets
@@ -651,8 +740,19 @@ async function syncAllPFtoSheet(){
   return false;
 }
 function loadPF(){
-  // Cargar desde Sheets al iniciar
+  // 1. Cargar backup local inmediatamente (sin esperar red)
+  loadPFfromLocalBackup();
+  loadPendingSync();
+  setTimeout(()=>updSyncIndicator(),100);
+  // 2. Luego sincronizar con Sheets y reconciliar
   setTimeout(()=>loadPFfromSheet(),600);
+  // 3. Reintentar cola de pendientes cada 30 segundos
+  setInterval(()=>{
+    if(_pendingSync.length>0){
+      console.log('🔄 Reintentando',_pendingSync.length,'pendientes...');
+      flushPendingSync();
+    }
+  },30000);
 }
 
 // Helper robusto para leer del Apps Script (maneja redirects de Google)
@@ -707,22 +807,51 @@ async function loadPFfromSheet(){
   try{
     const json=await fetchScript('action=readPF');
     if(json&&json.ok&&json.data&&json.data.length){
-      // Merge: Sheets gana pero no borramos locales que no estén en Sheets
       const sheetIds=new Set(json.data.map(p=>p.id));
-      // Agregar o actualizar desde Sheets
+      // 1. Agregar o actualizar desde Sheets
       json.data.forEach(spf=>{
         const idx=proformas.findIndex(p=>p.id===spf.id);
         if(idx>=0) proformas[idx]=spf;
         else proformas.push(spf);
       });
-      // Actualizar nextNum
+      // 2. RECONCILIACIÓN: subir proformas locales que no están en Sheets
+      const soloLocales=proformas.filter(p=>!sheetIds.has(p.id));
+      if(soloLocales.length){
+        console.log('🔄 Reconciliando',soloLocales.length,'proformas locales no encontradas en Sheets...');
+        soloLocales.forEach(pf=>addToPendingSync(pf));
+        setTimeout(()=>flushPendingSync(),2000);
+      }
+      // 3. Actualizar nextNum
       proformas.forEach(p=>{ const n=parseInt(String(p.num).replace(/^[A-Z]+/i,'')); if(n>=nextNum) nextNum=n+1; });
+      savePF(); // actualizar backup local con datos frescos
       updStats();
       if(document.getElementById('page-dash').classList.contains('on')) renderDash();
       if(document.getElementById('page-hist').classList.contains('on')) renderHist();
+    } else {
+      // Sheets vacío o sin respuesta — cargar desde backup local si hay
+      if(proformas.length===0){
+        const restored=loadPFfromLocalBackup();
+        if(restored){
+          toast('📱 Sin conexión — mostrando cotizaciones guardadas localmente','ok');
+          updStats();
+          if(document.getElementById('page-dash').classList.contains('on')) renderDash();
+          if(document.getElementById('page-hist').classList.contains('on')) renderHist();
+        }
+      }
     }
-    // Si json.data está vacío o null, NO tocar proformas locales
-  }catch(e){ console.warn('Error cargando proformas:',e); }
+  }catch(e){
+    console.warn('Error cargando proformas:',e);
+    // Error de red — intentar desde backup local
+    if(proformas.length===0){
+      const restored=loadPFfromLocalBackup();
+      if(restored){
+        toast('📱 Sin conexión — mostrando cotizaciones del dispositivo','ok');
+        updStats();
+        if(document.getElementById('page-dash').classList.contains('on')) renderDash();
+        if(document.getElementById('page-hist').classList.contains('on')) renderHist();
+      }
+    }
+  }
 }
 
 function limpiarDB(){
@@ -1267,22 +1396,12 @@ async function guardarPF(){
 // ══════════════════════════════════════════
 //  IMPRIMIR → PDF → luego limpia
 // ══════════════════════════════════════════
-let _generandoPDF = false;
 async function imprimirPF(){
-  if(_generandoPDF){ toast('⏳ Ya se está generando un PDF, espera...','err'); return; }
   const pf=await guardarPF(); if(!pf) return;
-  _generandoPDF = true;
-  try{
-    await generarPDF(pf);
-    toast('✅ PDF generado','ok');
-    // Limpiar formulario después de imprimir
-    setTimeout(()=>{ initPF(); pfActual.editMode=false; },1000);
-  }catch(e){
-    toast('Error generando PDF — reintenta','err');
-    console.error(e);
-  } finally {
-    _generandoPDF = false;
-  }
+  generarPDF(pf);
+  toast('✅ PDF generado','ok');
+  // Limpiar formulario después de imprimir
+  setTimeout(()=>{ initPF(); pfActual.editMode=false; },1000);
 }
 
 // ══════════════════════════════════════════
@@ -1428,13 +1547,7 @@ async function duplicarPF(id){
   const ok=await syncPFtoSheet(copia);
   if(ok) toast('📋 Proforma N°'+orig.num+' duplicada → nueva N°'+copia.num,'ok');
 }
-function pdfDeLista(id){
-  if(_generandoPDF){ toast('⏳ Ya se está generando un PDF, espera...','err'); return; }
-  const pf=proformas.find(p=>p.id===id);
-  if(!pf) return;
-  _generandoPDF=true;
-  generarPDF(pf).catch(e=>console.error(e)).finally(()=>{ _generandoPDF=false; });
-}
+function pdfDeLista(id){ const pf=proformas.find(p=>p.id===id); if(pf) generarPDF(pf); }
 
 // ══════════════════════════════════════════
 //  DASHBOARD
@@ -1685,35 +1798,13 @@ async function generarPDF(pf){
         await navigator.share({files:[file],title:'Proforma Tecnimax N° '+pf.num});
         toast('PDF compartido','ok');
         return;
-      }catch(e){
-        if(e.name==='AbortError'){
-          // Usuario canceló el share — igual descargar como fallback
-          doc.save(fileName);
-          return;
-        }
-        console.warn('Share falló, descargando:',e);
-      }
+      }catch(e){ if(e.name!=='AbortError') console.warn(e); }
     }
   }
-  // PC o fallback: descargar via URL blob (evita cola del navegador)
-  try{
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    // Revocar URL después de un momento para liberar memoria
-    setTimeout(()=>{
-      URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    }, 2000);
-  }catch(e){
-    // Último fallback
-    doc.save(fileName);
-  }
+  // PC o fallback: solo descargar
+  doc.save(fileName);
+  toast('PDF descargado','ok');
+}
 
 // ══════════════════════════════════════════
 //  HELPERS
