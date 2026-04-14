@@ -644,17 +644,27 @@ async function syncPFtoSheet(pf){
   toast('⚠️ Error guardando en Sheets — reintenta con Sincronizar','err');
   return false;
 }
-// Sincronizar TODAS las proformas a Sheets
+// Sincronizar TODAS las proformas a Sheets (en lotes de 10)
 async function syncAllPFtoSheet(){
-  for(let intento=1;intento<=3;intento++){
-    try{
-      const r=await postScript('saveAllPF',{proformas:proformas,nextNum:nextNum});
-      if(r&&r.ok) return true;
-    }catch(e){}
-    if(intento<3) await new Promise(r=>setTimeout(r,1000*intento));
+  const LOTE=10;
+  try{
+    for(let i=0;i<proformas.length;i+=LOTE){
+      const lote=proformas.slice(i,i+LOTE);
+      const esUltimo=(i+LOTE>=proformas.length);
+      for(let intento=1;intento<=3;intento++){
+        try{
+          const r=await postScript('saveAllPF',{proformas:lote,nextNum:esUltimo?nextNum:undefined});
+          if(r&&r.ok) break;
+        }catch(e){ if(intento===3) throw e; }
+        await new Promise(r=>setTimeout(r,1000*intento));
+      }
+      if(!esUltimo) await new Promise(r=>setTimeout(r,300));
+    }
+    return true;
+  }catch(e){
+    toast('⚠️ Error sincronizando todas — reintenta con Sincronizar','err');
+    return false;
   }
-  toast('⚠️ Error sincronizando todas — reintenta con Sincronizar','err');
-  return false;
 }
 function loadPF(){
   // 1. Cargar backup local inmediatamente
@@ -680,9 +690,17 @@ async function sincronizarTodo(silencioso=false){
   if(status) status.textContent='⏳ Sincronizando...';
 
   try{
-    // PASO 1: Subir todas las locales a Sheets (no perder nada de ninguna PC)
+    // PASO 1: Subir todas las locales en LOTES DE 10 (evita límite de URL en GET)
     if(proformas.length>0){
-      await postScript('saveAllPF',{proformas:proformas,nextNum:nextNum});
+      const LOTE=10;
+      for(let i=0;i<proformas.length;i+=LOTE){
+        const lote=proformas.slice(i,i+LOTE);
+        // nextNum solo en el último lote para no interferir con el conteo
+        const esUltimo=(i+LOTE>=proformas.length);
+        await postScript('saveAllPF',{proformas:lote,nextNum:esUltimo?nextNum:undefined});
+        // Pequeña pausa entre lotes para no saturar el GAS
+        if(!esUltimo) await new Promise(r=>setTimeout(r,300));
+      }
     }
     // PASO 2: Bajar todo desde Sheets (incluye las de otras PCs)
     await loadPFfromSheet();
