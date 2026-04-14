@@ -707,14 +707,20 @@ async function loadPFfromSheet(){
   try{
     const json=await fetchScript('action=readPF');
     if(json&&json.ok&&json.data&&json.data.length){
-      // Merge: Sheets gana pero no borramos locales que no estén en Sheets
-      const sheetIds=new Set(json.data.map(p=>p.id));
-      // Agregar o actualizar desde Sheets
+      console.log('📥 Sheets devolvió',json.data.length,'proformas (local:',proformas.length,')');
+      // Si Sheets tiene más que local, o tiene datos más nuevos → hacer merge completo
       json.data.forEach(spf=>{
         const idx=proformas.findIndex(p=>p.id===spf.id);
         if(idx>=0) proformas[idx]=spf;
         else proformas.push(spf);
       });
+      // Eliminar locales que Sheets ya no tiene (fueron eliminadas en Sheets)
+      // SOLO si Sheets devolvió una cantidad razonable (>0) para evitar borrar por error de red
+      if(json.data.length>0){
+        const sheetIds=new Set(json.data.map(p=>p.id));
+        // No eliminar — solo marcar las que Sheets tiene para referencia
+        // (conservamos todas para no perder nada)
+      }
       // ORDENAR siempre por número descendente (más reciente primero)
       proformas.sort((a,b)=>{
         const na=parseInt(String(a.num).replace(/^[A-Z]+/i,''))||0;
@@ -723,11 +729,15 @@ async function loadPFfromSheet(){
       });
       // Actualizar nextNum
       proformas.forEach(p=>{ const n=parseInt(String(p.num).replace(/^[A-Z]+/i,'')); if(n>=nextNum) nextNum=n+1; });
+      savePF(); // actualizar backup local
       updStats();
       if(document.getElementById('page-dash').classList.contains('on')) renderDash();
       if(document.getElementById('page-hist').classList.contains('on')) renderHist();
+      if(typeof updLastRefreshLabel==='function') updLastRefreshLabel();
+      console.log('✅ Total en memoria:',proformas.length,'proformas');
+    } else {
+      console.warn('⚠️ Sheets devolvió vacío o error — conservando',proformas.length,'locales');
     }
-    // Si json.data está vacío o null, NO tocar proformas locales
   }catch(e){ console.warn('Error cargando proformas:',e); }
 }
 
@@ -1260,12 +1270,6 @@ async function guardarPF(){
   };
   if(pfActual.id){ const idx=proformas.findIndex(p=>p.id===pfActual.id); if(idx>=0) proformas[idx]=pf; }
   else{ proformas.unshift(pf); nextNum++; }
-  // Mantener siempre ordenado por número descendente
-  proformas.sort((a,b)=>{
-    const na=parseInt(String(a.num).replace(/^[A-Z]+/i,''))||0;
-    const nb=parseInt(String(b.num).replace(/^[A-Z]+/i,''))||0;
-    return nb-na;
-  });
   pfActual.id=pf.id; pfActual.editMode=true;
   updStats();
   document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
@@ -1439,9 +1443,8 @@ function renderDash(){
   const list=proformas;
   const cont=document.getElementById('dash-list');
   if(!list.length){ cont.innerHTML='<div class="empty">Sin cotizaciones</div>'; return; }
-  const visible=list.slice(0,15);
   cont.innerHTML=`<table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Vehículo</th><th>Placa</th><th>Total</th><th></th></tr></thead><tbody>
-  ${visible.map(p=>`<tr>
+  ${list.slice(0,8).map(p=>`<tr>
     <td><span class="bd bdg">${p.num}</span></td>
     <td>${fFecha(p.fecha)}</td>
     <td>${p.cli.nom||'—'}</td>
@@ -1449,8 +1452,7 @@ function renderDash(){
     <td>${p.veh.placa||'—'}</td>
     <td style="color:var(--gold);font-weight:700">${p.moneda==='USD'?'$':'L'} ${fmt(p.total)}</td>
     <td><button class="btn bgh bsm" onclick="recuperarPF('${p.id}');goPage('nueva')">✏ Modificar</button> <button class="btn bgh bsm" onclick="duplicarPF('${p.id}')" title="Duplicar">📋</button></td>
-  </tr>`).join('')}</tbody></table>
-  ${list.length>15?`<div style="text-align:center;padding:10px"><button class="btn bgh bsm" onclick="goPage('hist')">Ver todas (${list.length}) →</button></div>`:''}`;
+  </tr>`).join('')}</tbody></table>`;
 }
 
 // ══════════════════════════════════════════
