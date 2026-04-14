@@ -737,31 +737,16 @@ async function fetchScript(params){
 // Helper para ESCRIBIR a Sheets via GET (POST no-cors falla por redirect 302)
 async function postScript(action, data){
   const payload=encodeURIComponent(JSON.stringify(data));
-  // Si cabe en URL (<7000 chars), enviar directo
-  if(payload.length<7000){
-    return await fetchScript('action='+action+'&data='+payload);
-  }
-  // Si es muy grande, partir en chunks
-  const raw=JSON.stringify(data);
-  const CHUNK=4000;
-  const total=Math.ceil(raw.length/CHUNK);
-  const batchId=Date.now().toString(36);
-  for(let i=0;i<total;i++){
-    const piece=encodeURIComponent(raw.substring(i*CHUNK,(i+1)*CHUNK));
-    await fetchScript('action='+action+'&chunked=1&batchId='+batchId+'&part='+i+'&total='+total+'&data='+piece);
-  }
-  return {ok:true};
+  return await fetchScript('action='+action+'&data='+payload);
 }
 
 async function loadPFfromSheet(){
   try{
     const json=await fetchScript('action=readPF');
     if(json&&json.ok&&json.data&&json.data.length){
-      json.data.forEach(spf=>{
-        const idx=proformas.findIndex(p=>p.id===spf.id);
-        if(idx>=0) proformas[idx]=spf;
-        else proformas.push(spf);
-      });
+      // Servidor es fuente de verdad — reemplazar completo
+      proformas.length=0;
+      json.data.forEach(spf=>proformas.push(spf));
       // Ordenar por número descendente siempre
       proformas.sort((a,b)=>{
         const na=parseInt(String(a.num).replace(/^[A-Z]+/i,''))||0;
