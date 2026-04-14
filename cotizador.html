@@ -275,14 +275,8 @@ tbody tr:hover td{background:var(--s2)}
 <!-- ═══ DASHBOARD ═══ -->
 <div id="page-dash" class="page on">
   <div class="flb">
-    <div>
-      <div class="ph">Panel Principal</div>
-      <div class="ps">Tecnimax S. DE. R.L &nbsp;·&nbsp; <span id="dash-last-upd" style="color:var(--mu)">Actualizando...</span></div>
-    </div>
-    <div class="flex">
-      <button class="btn bgh" id="btn-refresh-dash" onclick="refrescarManual()">🔄 Actualizar</button>
-      <button class="btn bg" onclick="goPage('nueva')">＋ Nueva Proforma</button>
-    </div>
+    <div><div class="ph">Panel Principal</div><div class="ps">Tecnimax S. DE. R.L</div></div>
+    <button class="btn bg" onclick="goPage('nueva')">＋ Nueva Proforma</button>
   </div>
   <div class="stats">
     <div class="stat"><div class="sv" id="s-p">0</div><div class="sl">Productos en base</div></div>
@@ -429,10 +423,7 @@ tbody tr:hover td{background:var(--s2)}
 <!-- ═══ COTIZACIÓN ═══ -->
 <div id="page-hist" class="page">
   <div class="flb" style="margin-bottom:14px">
-    <div>
-      <div class="ph">Cotización</div>
-      <div class="ps">Gestionar cotizaciones &nbsp;·&nbsp; <span id="hist-last-upd" style="color:var(--mu)"></span></div>
-    </div>
+    <div><div class="ph">Cotización</div><div class="ps">Gestionar cotizaciones y pedidos</div></div>
     <div class="flex" style="gap:6px">
       <button class="btn bgh" onclick="sincronizarPFs()" id="btn-sync">🔄 Sincronizar</button>
       <button class="btn bg" onclick="goPage('nueva')">＋ Nueva</button>
@@ -724,12 +715,17 @@ async function loadPFfromSheet(){
         if(idx>=0) proformas[idx]=spf;
         else proformas.push(spf);
       });
+      // ORDENAR siempre por número descendente (más reciente primero)
+      proformas.sort((a,b)=>{
+        const na=parseInt(String(a.num).replace(/^[A-Z]+/i,''))||0;
+        const nb=parseInt(String(b.num).replace(/^[A-Z]+/i,''))||0;
+        return nb-na;
+      });
       // Actualizar nextNum
       proformas.forEach(p=>{ const n=parseInt(String(p.num).replace(/^[A-Z]+/i,'')); if(n>=nextNum) nextNum=n+1; });
       updStats();
       if(document.getElementById('page-dash').classList.contains('on')) renderDash();
       if(document.getElementById('page-hist').classList.contains('on')) renderHist();
-      if(typeof updLastRefreshLabel==='function') updLastRefreshLabel();
     }
     // Si json.data está vacío o null, NO tocar proformas locales
   }catch(e){ console.warn('Error cargando proformas:',e); }
@@ -1264,6 +1260,12 @@ async function guardarPF(){
   };
   if(pfActual.id){ const idx=proformas.findIndex(p=>p.id===pfActual.id); if(idx>=0) proformas[idx]=pf; }
   else{ proformas.unshift(pf); nextNum++; }
+  // Mantener siempre ordenado por número descendente
+  proformas.sort((a,b)=>{
+    const na=parseInt(String(a.num).replace(/^[A-Z]+/i,''))||0;
+    const nb=parseInt(String(b.num).replace(/^[A-Z]+/i,''))||0;
+    return nb-na;
+  });
   pfActual.id=pf.id; pfActual.editMode=true;
   updStats();
   document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
@@ -1437,8 +1439,9 @@ function renderDash(){
   const list=proformas;
   const cont=document.getElementById('dash-list');
   if(!list.length){ cont.innerHTML='<div class="empty">Sin cotizaciones</div>'; return; }
+  const visible=list.slice(0,15);
   cont.innerHTML=`<table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Vehículo</th><th>Placa</th><th>Total</th><th></th></tr></thead><tbody>
-  ${list.slice(0,8).map(p=>`<tr>
+  ${visible.map(p=>`<tr>
     <td><span class="bd bdg">${p.num}</span></td>
     <td>${fFecha(p.fecha)}</td>
     <td>${p.cli.nom||'—'}</td>
@@ -1446,7 +1449,8 @@ function renderDash(){
     <td>${p.veh.placa||'—'}</td>
     <td style="color:var(--gold);font-weight:700">${p.moneda==='USD'?'$':'L'} ${fmt(p.total)}</td>
     <td><button class="btn bgh bsm" onclick="recuperarPF('${p.id}');goPage('nueva')">✏ Modificar</button> <button class="btn bgh bsm" onclick="duplicarPF('${p.id}')" title="Duplicar">📋</button></td>
-  </tr>`).join('')}</tbody></table>`;
+  </tr>`).join('')}</tbody></table>
+  ${list.length>15?`<div style="text-align:center;padding:10px"><button class="btn bgh bsm" onclick="goPage('hist')">Ver todas (${list.length}) →</button></div>`:''}`;
 }
 
 // ══════════════════════════════════════════
@@ -2283,49 +2287,6 @@ try{ loadPF(); }catch(e){ console.error("loadPF error:",e); }
 try{ updStats(); }catch(e){ console.error("updStats error:",e); }
 try{ cargarConfig(); }catch(e){ console.error("cargarConfig error:",e); }
 try{ initComprasInfo(); }catch(e){ console.error("initComprasInfo error:",e); }
-
-// ══════════════════════════════════════════
-//  AUTO-REFRESH — sincroniza cotizaciones automáticamente
-// ══════════════════════════════════════════
-let _lastRefresh = 0;
-async function autoRefreshPF(){
-  const ahora = Date.now();
-  // Evitar refrescos muy seguidos (mínimo 20 segundos entre refrescos)
-  if(ahora - _lastRefresh < 20000) return;
-  _lastRefresh = ahora;
-  await loadPFfromSheet();
-}
-
-// 1. Refrescar cada 60 segundos en segundo plano
-setInterval(()=> autoRefreshPF(), 60000);
-
-// 2. Refrescar al volver a la pestaña/ventana (el caso más común)
-document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState === 'visible') autoRefreshPF();
-});
-
-// 3. Refrescar al recuperar el foco de la ventana
-window.addEventListener('focus', ()=> autoRefreshPF());
-
-function updLastRefreshLabel(){
-  const ahora = new Date();
-  const hhmm = ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-  const txt = 'Actualizado: '+hhmm;
-  const d = document.getElementById('dash-last-upd');
-  const h = document.getElementById('hist-last-upd');
-  if(d) d.textContent = txt;
-  if(h) h.textContent = txt;
-}
-
-async function refrescarManual(){
-  const btn = document.getElementById('btn-refresh-dash');
-  if(btn){ btn.textContent='⏳'; btn.disabled=true; }
-  _lastRefresh = 0; // forzar aunque sea reciente
-  await loadPFfromSheet();
-  updLastRefreshLabel();
-  if(btn){ btn.textContent='🔄 Actualizar'; btn.disabled=false; }
-  toast('✅ Cotizaciones actualizadas','ok');
-}
 
 function loadComprasDB(){
   if(Object.keys(DBcompras).length>0) return; // ya cargado
