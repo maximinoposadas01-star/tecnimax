@@ -800,12 +800,13 @@ function goPage(id){
 // ══════════════════════════════════════════
 function updStats(){
   document.getElementById('s-pend').textContent=proformas.length;
-  const pendCount=proformas.filter(function(p){return p.estado==='pend';}).length;
+  const hoy=new Date().toISOString().slice(0,10);
+  const deHoy=proformas.filter(function(p){return p.fecha&&String(p.fecha).slice(0,10)===hoy;});
+  const pendCount=deHoy.filter(function(p){return p.estado==='pend';}).length;
   const autCount=proformas.filter(function(p){return p.estado==='autorizado';}).length;
   const elPend=document.getElementById('s-pend-count'); if(elPend) elPend.textContent=pendCount;
   const elAut=document.getElementById('s-aut-count'); if(elAut) elAut.textContent=autCount;
-  const hoy=new Date().toISOString().slice(0,10);
-  const totalHoy=proformas.filter(function(p){return p.fecha&&String(p.fecha).slice(0,10)===hoy;})
+  const totalHoy=deHoy.filter(function(p){return p.estado!=='hist';})
     .reduce(function(s,p){return s+(parseFloat(p.total)||0);},0);
   const elHoy=document.getElementById('s-hoy');
   if(elHoy) elHoy.textContent='L '+fmt(totalHoy);
@@ -1497,12 +1498,18 @@ function pdfDeLista(id){ const pf=proformas.find(p=>p.id===id); if(pf) generarPD
 // ══════════════════════════════════════════
 function renderDash(){
   const hoy=new Date().toISOString().slice(0,10);
-  const list=proformas.filter(function(p){
-    return p.fecha&&String(p.fecha).slice(0,10)===hoy&&p.estado!=='hist';
+  // Pendientes de hoy + todas las autorizadas sin finalizar
+  const pendHoy=proformas.filter(function(p){
+    return p.fecha&&String(p.fecha).slice(0,10)===hoy&&p.estado==='pend';
   });
+  const autTodas=proformas.filter(function(p){ return p.estado==='autorizado'; });
+  // Autorizadas primero, luego pendientes de hoy
+  const list=autTodas.concat(pendHoy.filter(function(p){
+    return !autTodas.find(function(a){return a.id===p.id;});
+  }));
   const cont=document.getElementById('dash-list');
-  if(!list.length){ cont.innerHTML='<div class="empty">Sin cotizaciones hoy</div>'; return; }
-  const autHoy=list.filter(function(p){return p.estado==='autorizado';}).length;
+  if(!list.length){ cont.innerHTML='<div class="empty">Sin cotizaciones activas</div>'; return; }
+  const autHoy=autTodas.length;
   let rows='';
   list.forEach(function(p){
     const esAut=p.estado==='autorizado';
