@@ -1400,28 +1400,35 @@ function toggleArchivadas(){
 
 function renderSub(cid,list,isPend){
   const cont=document.getElementById(cid);
-  if(!list.length){ cont.innerHTML=`<div class="empty">Sin cotizaciones</div>`; return; }
-  cont.innerHTML=`<table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Placa</th><th>Vehículo</th><th>Total</th><th>Acciones</th></tr></thead><tbody>
-  ${list.map(p=>{
+  if(!list.length){ cont.innerHTML='<div class="empty">Sin cotizaciones</div>'; return; }
+  let rows='';
+  list.forEach(function(p){
     const esAut=p.estado==='autorizado';
-    const badgeClass=esAut?'bd bdgr':'bd bdg';
-    const rowStyle=esAut?'background:rgba(22,163,74,.04)':'';
-    return `<tr style="${rowStyle}">
-    <td><span class="${badgeClass}">${p.num}</span>${esAut?' <span style="font-size:10px;color:var(--gr);font-weight:700">✓ Autorizada</span>':''}</td>
-    <td>${fFecha(p.fecha)}</td>
-    <td>${p.cli.nom||'—'}</td>
-    <td>${p.veh.placa||'—'}</td>
-    <td>${[p.veh.ma,p.veh.mo,p.veh.a].filter(Boolean).join(' ')||'—'}</td>
-    <td style="color:var(--gold);font-weight:700;white-space:nowrap">${p.moneda==='USD'?'$':'L'}&nbsp;${fmt(p.total)}</td>
-    <td><div class="flex" style="gap:5px">
-      ${esAut?'':'<button class="btn bg bsm" onclick="autorizarPF(''+p.id+'')">✓ Autorizar</button>'}
-      <button class="btn bgh bsm" onclick="recuperarPF('${p.id}');goPage('nueva')">✏</button>
-      <button class="btn bg bsm" onclick="pdfDeLista('${p.id}')">📄</button>
-      <button class="btn bgh bsm" onclick="duplicarPF('${p.id}')" title="Duplicar">📋</button>
-      <button class="btn br bsm" onclick="elimPF('${p.id}')">✕</button>
-    </div></td>
-  </tr>`;}).join('')}</tbody></table>`;
+    const badge=esAut?'bd bdgr':'bd bdg';
+    const rowBg=esAut?'background:rgba(22,163,74,.04)':'';
+    const veh=[p.veh.ma,p.veh.mo,p.veh.a].filter(Boolean).join(' ')||'—';
+    const mon=(p.moneda==='USD'?'$':'L')+' '+fmt(p.total);
+    const autLabel=esAut?'<span style="font-size:10px;color:var(--gr);font-weight:700"> ✓ Autorizada</span>':'';
+    const autBtn=esAut?'':'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>';
+    rows+='<tr style="'+rowBg+'">'
+      +'<td><span class="'+badge+'">'+p.num+'</span>'+autLabel+'</td>'
+      +'<td>'+fFecha(p.fecha)+'</td>'
+      +'<td>'+(p.cli.nom||'—')+'</td>'
+      +'<td>'+(p.veh.placa||'—')+'</td>'
+      +'<td>'+veh+'</td>'
+      +'<td style="color:var(--gold);font-weight:700;white-space:nowrap">'+mon+'</td>'
+      +'<td><div class="flex" style="gap:5px">'+autBtn
+      +' <button class="btn bgh bsm" onclick="recuperarPF(\''+p.id+'\');goPage(\'nueva\')">✏</button>'
+      +' <button class="btn bg bsm" onclick="pdfDeLista(\''+p.id+'\')">📄</button>'
+      +' <button class="btn bgh bsm" onclick="duplicarPF(\''+p.id+'\')" title="Duplicar">📋</button>'
+      +' <button class="btn br bsm" onclick="elimPF(\''+p.id+'\')">✕</button>'
+      +'</div></td>'
+      +'</tr>';
+  });
+  cont.innerHTML='<table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Placa</th><th>Vehículo</th><th>Total</th><th>Acciones</th></tr></thead>'
+    +'<tbody>'+rows+'</tbody></table>';
 }
+
 
 function archivarPF(id){
   const pf=proformas.find(p=>p.id===id);
@@ -1492,36 +1499,45 @@ function pdfDeLista(id){ const pf=proformas.find(p=>p.id===id); if(pf) generarPD
 // ══════════════════════════════════════════
 function renderDash(){
   const hoy=new Date().toISOString().slice(0,10);
-  const list=proformas.filter(p=>p.fecha&&String(p.fecha).slice(0,10)===hoy);
+  const list=proformas.filter(function(p){ return p.fecha&&String(p.fecha).slice(0,10)===hoy; });
   const cont=document.getElementById('dash-list');
   if(!list.length){ cont.innerHTML='<div class="empty">Sin cotizaciones hoy</div>'; return; }
-  const autHoy=list.filter(p=>p.estado==='autorizado').length;
-  cont.innerHTML=`
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-    <span style="font-size:13px;color:var(--mu)">${list.length} cotizacion${list.length!==1?'es':''} hoy</span>
-    <span style="font-size:13px;color:var(--gr);font-weight:600">✓ ${autHoy} autorizada${autHoy!==1?'s':''}</span>
-  </div>
-  <table><thead><tr><th>N°</th><th>Hora</th><th>Vend.</th><th>Cliente</th><th>Vehículo</th><th>Placa</th><th>Total</th><th></th></tr></thead><tbody>
-  ${list.map(p=>{
+  const autHoy=list.filter(function(p){ return p.estado==='autorizado'; }).length;
+  let rows='';
+  list.forEach(function(p){
     const esAut=p.estado==='autorizado';
-    const badgeClass=esAut?'bd bdgr':'bd bdg';
+    const badge=esAut?'bd bdgr':'bd bdg';
+    const rowBg=esAut?'background:rgba(22,163,74,.04)':'';
     const hora=p.fecha&&p.fecha.includes(' ')?p.fecha.split(' ')[1]:'—';
-    return '<tr style="'+(esAut?'background:rgba(22,163,74,.04)':'')+'">'+
-    '<td><span class="'+badgeClass+'">'+p.num+'</span></td>'+
-    '<td style="font-size:11px;color:var(--mu)">'+hora+'</td>'+
-    '<td style="font-size:11px;color:var(--mu);font-weight:600">'+(p.vendedor?p.vendedor.trim().split(/\s+/).map(w=>w.charAt(0).toUpperCase()).join(''):'—')+'</td>'+
-    '<td>'+(p.cli.nom||'—')+'</td>'+
-    '<td>'+([p.veh.ma,p.veh.mo,p.veh.a].filter(Boolean).join(' ')||'—')+'</td>'+
-    '<td>'+(p.veh.placa||'—')+'</td>'+
-    '<td style="color:var(--gold);font-weight:700;white-space:nowrap">'+(p.moneda==='USD'?'$':'L')+'&nbsp;'+fmt(p.total)+'</td>'+
-    '<td><div class="flex" style="gap:4px">'+
-    (esAut?'<span style="font-size:11px;color:var(--gr);font-weight:600">✓</span>':'<button class="btn bg bsm" onclick="autorizarPF(''+p.id+'')">✓</button>')+
-    ' <button class="btn bgh bsm" onclick="recuperarPF(''+p.id+'');goPage('nueva')">✏</button>'+
-    ' <button class="btn bg bsm" onclick="pdfDeLista(''+p.id+'')">📄</button>'+
-    '</div></td>'+
-    '</tr>';
-  }).join('')}</tbody></table>`;
+    const vend=p.vendedor?p.vendedor.trim().split(/\s+/).map(function(w){return w.charAt(0).toUpperCase();}).join(''):'—';
+    const veh=[p.veh.ma,p.veh.mo,p.veh.a].filter(Boolean).join(' ')||'—';
+    const mon=(p.moneda==='USD'?'$':'L')+' '+fmt(p.total);
+    const accion=esAut
+      ?'<span style="font-size:11px;color:var(--gr);font-weight:600">✓ Aut.</span>'
+      :'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>';
+    rows+='<tr style="'+rowBg+'">'
+      +'<td><span class="'+badge+'">'+p.num+'</span></td>'
+      +'<td style="font-size:11px;color:var(--mu)">'+hora+'</td>'
+      +'<td style="font-size:11px;color:var(--mu);font-weight:600">'+vend+'</td>'
+      +'<td>'+(p.cli.nom||'—')+'</td>'
+      +'<td>'+veh+'</td>'
+      +'<td>'+(p.veh.placa||'—')+'</td>'
+      +'<td style="color:var(--gold);font-weight:700;white-space:nowrap">'+mon+'</td>'
+      +'<td><div class="flex" style="gap:4px">'+accion
+      +' <button class="btn bgh bsm" onclick="recuperarPF(\''+p.id+'\');goPage(\'nueva\')">✏</button>'
+      +' <button class="btn bg bsm" onclick="pdfDeLista(\''+p.id+'\')">📄</button>'
+      +'</div></td>'
+      +'</tr>';
+  });
+  cont.innerHTML=''
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+    +'<span style="font-size:13px;color:var(--mu)">'+list.length+' cotizacion'+(list.length!==1?'es':'')+'</span>'
+    +'<span style="font-size:13px;color:var(--gr);font-weight:600">✓ '+autHoy+' autorizada'+(autHoy!==1?'s':'')+'</span>'
+    +'</div>'
+    +'<table><thead><tr><th>N°</th><th>Hora</th><th>Vend.</th><th>Cliente</th><th>Vehículo</th><th>Placa</th><th>Total</th><th></th></tr></thead>'
+    +'<tbody>'+rows+'</tbody></table>';
 }
+
 
 // ══════════════════════════════════════════
 //  GENERAR PDF — ESTILO CLARO (similar al ejemplo)
