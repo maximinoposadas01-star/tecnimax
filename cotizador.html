@@ -280,7 +280,8 @@ tbody tr:hover td{background:var(--s2)}
     <button class="tab on"  data-page="dash">Inicio</button>
     <button class="tab"     data-page="nueva">Nueva</button>
     <button class="tab"     data-page="hist">Cotización</button>
-        <button class="tab"     data-page="imp">Config</button>
+        <button class="tab"     data-page="stats">Stats</button>
+    <button class="tab"     data-page="imp">Config</button>
   </div>
 </nav>
 
@@ -589,6 +590,32 @@ tbody tr:hover td{background:var(--s2)}
 </div>
 
 <div class="toast" id="toast"></div>
+<!-- ═══ STATS ═══ -->
+<div id="page-stats" class="page">
+  <div class="flb">
+    <div><div class="ph">Estadísticas</div><div class="ps">Cotizaciones vs Autorizadas</div></div>
+  </div>
+  <!-- Selector de período -->
+  <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
+    <button class="btn bg" id="stats-btn-7" onclick="verStats('7d')">Últimos 7 días</button>
+    <button class="btn bgh" id="stats-btn-mes" onclick="verStats('mes')">Este mes</button>
+    <button class="btn bgh" id="stats-btn-año" onclick="verStats('año')">Este año</button>
+  </div>
+  <!-- Resumen -->
+  <div class="stats" id="stats-resumen" style="margin-bottom:18px">
+    <div class="stat"><div class="sv" id="st-total-cot">0</div><div class="sl">Cotizaciones</div></div>
+    <div class="stat"><div class="sv" id="st-total-aut">0</div><div class="sl">Autorizadas</div></div>
+    <div class="stat"><div class="sv" id="st-pct">0%</div><div class="sl">Tasa autorización</div></div>
+    <div class="stat"><div class="sv" id="st-monto">L 0</div><div class="sl">Total autorizado</div></div>
+  </div>
+  <!-- Tabla detalle -->
+  <div class="card">
+    <div class="ctitle" id="stats-titulo">Detalle por día</div>
+    <div id="stats-tabla"></div>
+  </div>
+</div>
+
+
 
 <script>
 // ══════════════════════════════════════════
@@ -788,10 +815,11 @@ function goPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
   document.getElementById('page-'+id).classList.add('on');
-  ['dash','nueva','hist','imp'].forEach((n,i)=>{ if(n===id) document.querySelectorAll('.tab')[i].classList.add('on'); });
+  ['dash','nueva','hist','stats','imp'].forEach((n,i)=>{ if(n===id) document.querySelectorAll('.tab')[i].classList.add('on'); });
   if(id==='hist'){ loadPFfromSheet().then(()=>renderHist()); }
   if(id==='dash'){ loadPFfromSheet().then(()=>{ renderDash(); updStats(); }); }
   if(id==='imp'){ updDBstats(); cargarConfig(); }
+  if(id==='stats'){ verStats('7d'); }
   if(id==='nueva'&&!pfActual.editMode) initPF();
 }
 
@@ -2512,6 +2540,111 @@ function finalizarPF(id){
   updStats();
   renderDash();
   toast('Proforma N° '+pf.num+' finalizada','ok');
+}
+
+
+// ══════════════════════════════════════════
+//  ESTADÍSTICAS
+// ══════════════════════════════════════════
+function verStats(periodo){
+  // Actualizar botones activos
+  ['7d','mes','año'].forEach(function(p){
+    const btn=document.getElementById('stats-btn-'+(p==='7d'?'7':p==='mes'?'mes':'año'));
+    if(btn) btn.className=p===periodo?'btn bg':'btn bgh';
+  });
+
+  const hoy=new Date();
+  const hoyStr=hoy.toISOString().slice(0,10);
+  let fechaInicio, agrupar, titulo;
+
+  if(periodo==='7d'){
+    const d=new Date(hoy); d.setDate(d.getDate()-6);
+    fechaInicio=d.toISOString().slice(0,10);
+    agrupar='dia'; titulo='Últimos 7 días';
+  } else if(periodo==='mes'){
+    fechaInicio=hoyStr.slice(0,7)+'-01';
+    agrupar='dia'; titulo='Este mes — '+['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][hoy.getMonth()];
+  } else {
+    fechaInicio=hoyStr.slice(0,4)+'-01-01';
+    agrupar='mes'; titulo='Este año — '+hoyStr.slice(0,4);
+  }
+
+  document.getElementById('stats-titulo').textContent=titulo;
+
+  // Filtrar proformas en el período
+  const pfs=proformas.filter(function(p){
+    if(!p.fecha) return false;
+    const f=String(p.fecha).slice(0,10);
+    return f>=fechaInicio && f<=hoyStr;
+  });
+
+  // Agrupar
+  const grupos={};
+  pfs.forEach(function(p){
+    const f=String(p.fecha).slice(0,10);
+    const key=agrupar==='mes'?f.slice(0,7):f;
+    if(!grupos[key]) grupos[key]={cot:0,aut:0,monto:0};
+    grupos[key].cot++;
+    if(p.estado==='autorizado'||p.estado==='hist'){
+      grupos[key].aut++;
+      grupos[key].monto+=(parseFloat(p.total)||0);
+    }
+  });
+
+  // Totales para resumen
+  let totCot=0,totAut=0,totMonto=0;
+  Object.keys(grupos).forEach(function(k){
+    totCot+=grupos[k].cot;
+    totAut+=grupos[k].aut;
+    totMonto+=grupos[k].monto;
+  });
+  document.getElementById('st-total-cot').textContent=totCot;
+  document.getElementById('st-total-aut').textContent=totAut;
+  document.getElementById('st-pct').textContent=totCot?Math.round(totAut/totCot*100)+'%':'0%';
+  document.getElementById('st-monto').textContent='L '+fmt(totMonto);
+
+  // Tabla
+  const keys=Object.keys(grupos).sort().reverse();
+  if(!keys.length){
+    document.getElementById('stats-tabla').innerHTML='<div class="empty">Sin datos en este período</div>';
+    return;
+  }
+
+  const meses=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  let rows='';
+  keys.forEach(function(k){
+    const g=grupos[k];
+    const pct=g.cot?Math.round(g.aut/g.cot*100):0;
+    const color=pct>=50?'var(--gr)':pct>0?'#f59e0b':'var(--mu)';
+    // Formatear etiqueta
+    let label=k;
+    if(agrupar==='mes'&&k.length===7){
+      const parts=k.split('-');
+      label=meses[parseInt(parts[1])-1]+' '+parts[0];
+    } else if(k.length===10){
+      const parts=k.split('-');
+      label=parts[2]+'/'+parts[1];
+    }
+    // Barra de progreso
+    const bar='<div style="background:var(--b1);border-radius:4px;height:6px;width:80px;display:inline-block;vertical-align:middle;margin-left:6px">'
+      +'<div style="background:'+color+';width:'+pct+'%;height:100%;border-radius:4px"></div></div>';
+    rows+='<tr>'
+      +'<td style="font-weight:600">'+label+'</td>'
+      +'<td style="text-align:center">'+g.cot+'</td>'
+      +'<td style="text-align:center;color:'+color+';font-weight:600">'+g.aut+bar+'</td>'
+      +'<td style="text-align:right;color:var(--gold);font-weight:600;white-space:nowrap">L '+fmt(g.monto)+'</td>'
+      +'<td style="text-align:center;color:'+color+';font-weight:600">'+pct+'%</td>'
+      +'</tr>';
+  });
+
+  document.getElementById('stats-tabla').innerHTML=
+    '<table><thead><tr>'
+    +'<th>Período</th>'
+    +'<th style="text-align:center">Cotizadas</th>'
+    +'<th style="text-align:center">Autorizadas</th>'
+    +'<th style="text-align:right">Monto autorizado</th>'
+    +'<th style="text-align:center">% Éxito</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table>';
 }
 
 </script>
