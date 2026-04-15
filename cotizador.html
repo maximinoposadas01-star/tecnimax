@@ -823,9 +823,13 @@ function initPF(){
   document.getElementById('pf-title').textContent='Nueva Proforma';
   document.getElementById('pf-num').textContent='PROFORMA N° —';
   document.getElementById('rec-ban').classList.remove('on');
-  ['cli-nom','veh-placa','veh-ma','veh-mo','veh-a','veh-km','pf-vend','pf-notas'].forEach(id=>{
+  ['cli-nom','veh-placa','veh-ma','veh-mo','veh-a','veh-km','pf-notas'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
+  // Restaurar vendedor desde localStorage (nunca se borra)
+  const _vn=localStorage.getItem('tm_vendedor_nombre');
+  const _vField=document.getElementById('pf-vend');
+  if(_vn&&_vField) _vField.value=_vn;
   document.getElementById('pf-desc').value='0';
   document.getElementById('pf-isv').value='15';
   document.getElementById('pf-mon').value='HNL';
@@ -2310,6 +2314,8 @@ try{ loadPF(); }catch(e){ console.error("loadPF error:",e); }
 try{ updStats(); }catch(e){ console.error("updStats error:",e); }
 try{ cargarConfig(); }catch(e){ console.error("cargarConfig error:",e); }
 try{ initComprasInfo(); }catch(e){ console.error("initComprasInfo error:",e); }
+// Cargar vendedor guardado en esta PC
+try{ cargarVendedorLocal(); }catch(e){}
 
 // Sincronizar al volver a la pestaña o ventana
 let _lastAutoSync=0;
@@ -2392,6 +2398,95 @@ function buscarCompra(desc){
   return null;
 }
 
+
+// ══════════════════════════════════════════
+//  VENDEDOR LOCAL — persiste en esta PC
+// ══════════════════════════════════════════
+function getIniciales(nombre){
+  return nombre.trim().split(/\s+/).map(w=>w.charAt(0).toUpperCase()).join('');
+}
+
+function cargarVendedorLocal(){
+  const nombre = localStorage.getItem('tm_vendedor_nombre');
+  if(!nombre){
+    // Primera vez — mostrar modal obligatorio
+    document.getElementById('modal-vendedor-setup').classList.add('on');
+    return;
+  }
+  // Llenar campo vendedor en nueva proforma
+  const el = document.getElementById('pf-vend');
+  if(el) el.value = nombre;
+  // Mostrar en navbar
+  actualizarBadgeVendedor(nombre);
+}
+
+function guardarVendedorLocal(){
+  const nombre = document.getElementById('input-vendedor-setup').value.trim();
+  if(!nombre){ toast('Escribe tu nombre para continuar','err'); return; }
+  const iniciales = getIniciales(nombre);
+  if(!iniciales){ toast('Nombre inválido','err'); return; }
+  localStorage.setItem('tm_vendedor_nombre', nombre);
+  // Llenar campo
+  const el = document.getElementById('pf-vend');
+  if(el) el.value = nombre;
+  // Cerrar modal
+  document.getElementById('modal-vendedor-setup').classList.remove('on');
+  actualizarBadgeVendedor(nombre);
+  toast('✅ Vendedor guardado en este dispositivo: ' + iniciales,'ok');
+}
+
+function actualizarBadgeVendedor(nombre){
+  const iniciales = getIniciales(nombre);
+  // Buscar o crear badge en navbar
+  let badge = document.getElementById('badge-vendedor');
+  if(!badge){
+    badge = document.createElement('span');
+    badge.id = 'badge-vendedor';
+    badge.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;padding:3px 9px;border-radius:12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap';
+    badge.title = nombre + ' — clic para cambiar';
+    badge.onclick = cambiarVendedorLocal;
+    const nav = document.querySelector('.tabs');
+    if(nav) nav.parentNode.insertBefore(badge, nav);
+  }
+  badge.textContent = '👤 ' + iniciales;
+}
+
+function cambiarVendedorLocal(){
+  if(!confirm('¿Cambiar el vendedor de esta PC?\nEsto solo afecta a este dispositivo.')) return;
+  localStorage.removeItem('tm_vendedor_nombre');
+  document.getElementById('input-vendedor-setup').value = '';
+  document.getElementById('modal-vendedor-setup').classList.add('on');
+}
+
+// Preview iniciales mientras escribe
+document.addEventListener('DOMContentLoaded', function(){
+  const inp = document.getElementById('input-vendedor-setup');
+  const prev = document.getElementById('preview-iniciales');
+  if(inp && prev){
+    inp.addEventListener('input', function(){
+      const ini = getIniciales(inp.value);
+      prev.textContent = ini ? 'Prefijo: ' + ini + ' → cotizaciones como ' + ini + '5001, ' + ini + '5002...' : '';
+    });
+    inp.addEventListener('keydown', function(e){
+      if(e.key === 'Enter') guardarVendedorLocal();
+    });
+  }
+});
+
 </script>
+
+<!-- Modal vendedor obligatorio -->
+<div class="mbg" id="modal-vendedor-setup">
+  <div class="modal" style="max-width:380px;text-align:center">
+    <div style="font-size:32px;margin-bottom:8px">👤</div>
+    <div class="mtitle" style="text-align:center">¿Quién usará esta PC?</div>
+    <p style="color:var(--mu);font-size:13px;margin-bottom:18px">Escribe tu nombre completo. Se usará como prefijo en los números de cotización y no se volverá a preguntar en este dispositivo.</p>
+    <div class="f">
+      <input id="input-vendedor-setup" placeholder="Ej: Juan Carlos Posadas" style="text-align:center;font-size:15px">
+      <div id="preview-iniciales" style="margin-top:6px;font-size:12px;color:var(--mu)"></div>
+    </div>
+    <button class="btn bg" style="width:100%;margin-top:8px" onclick="guardarVendedorLocal()">Confirmar y continuar →</button>
+  </div>
+</div>
 </body>
 </html>
