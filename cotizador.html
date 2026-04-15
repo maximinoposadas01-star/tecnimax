@@ -1298,7 +1298,7 @@ async function guardarPF(){
   const pf={
     id:   pfActual.id||(Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
     num,
-    estado:'pend',
+    estado: existente&&existente.estado==='autorizado'?'autorizado':'pend',
     fecha: document.getElementById('pf-fecha').value,
     vence: document.getElementById('pf-vence').value,
     vendedor:document.getElementById('pf-vend').value,
