@@ -54,13 +54,13 @@ if('serviceWorker' in navigator){
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;font-size:14px}
 
-.nav{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;
+.nav{display:flex;align-items:center;justify-content:space-between;padding:0 12px;height:52px;
   background:#1a1a2e;border-bottom:3px solid var(--gold);position:sticky;top:0;z-index:100}
 .logo{font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;display:flex;align-items:center;gap:8px}
 .logo-i{width:28px;height:28px;background:var(--gold);border-radius:5px;display:grid;place-items:center;font-size:14px;color:#fff}
 .tabs{display:flex;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
-.tab{padding:6px 13px;border-radius:var(--r2);cursor:pointer;font-size:13px;font-weight:500;
+.tab{padding:6px 10px;border-radius:var(--r2);cursor:pointer;font-size:12px;font-weight:500;
   color:rgba(255,255,255,.6);border:none;background:transparent;transition:all .15s;white-space:nowrap;flex-shrink:0}
 .tab:hover{color:#fff;background:rgba(255,255,255,.1)}
 .tab.on{color:#fff;background:var(--gold)}
@@ -279,8 +279,8 @@ tbody tr:hover td{background:var(--s2)}
   <div class="tabs">
     <button class="tab on"  data-page="dash">Inicio</button>
     <button class="tab"     data-page="nueva">Nueva</button>
-    <button class="tab"     data-page="hist">Cotización</button>
-        <button class="tab"     data-page="stats">Stats</button>
+    <button class="tab"     data-page="hist">Cotizaciones</button>
+    <button class="tab"     data-page="stats">📊 Stats</button>
     <button class="tab"     data-page="imp">Config</button>
   </div>
 </nav>
