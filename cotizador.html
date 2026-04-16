@@ -75,6 +75,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--tx);min-h
 .ps{color:var(--mu);font-size:13px;margin-bottom:20px}
 
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:20px}
+#page-dash .stats{grid-template-columns:repeat(5,1fr)}
 .stat{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .sv{font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:var(--gold)}
 .sl{font-size:11px;color:var(--mu);margin-top:2px}
@@ -302,7 +303,8 @@ tbody tr:hover td{background:var(--s2)}
     </div>
   </div>
   <div class="stats">
-    <div class="stat"><div class="sv" id="s-hoy">L 0</div><div class="sl">Total cotizado hoy</div></div>
+    <div class="stat"><div class="sv" id="s-hoy">L 0</div><div class="sl">Cotizado hoy</div></div>
+    <div class="stat"><div class="sv" id="s-hoy-aut">L 0</div><div class="sl">Autorizado hoy</div></div>
     <div class="stat"><div class="sv" id="s-pend">0</div><div class="sl">Cotizaciones totales</div></div>
     <div class="stat"><div class="sv" id="s-pend-count">0</div><div class="sl">Pendientes</div></div>
     <div class="stat"><div class="sv" id="s-aut-count">0</div><div class="sl">Autorizadas</div></div>
@@ -611,7 +613,7 @@ tbody tr:hover td{background:var(--s2)}
     <button class="btn bgh" id="stats-btn-año" onclick="verStats('año')">Este año</button>
   </div>
   <!-- Resumen -->
-  <div class="stats" id="stats-resumen" style="margin-bottom:18px">
+  <div id="stats-resumen" style="display:grid;grid-template-columns:repeat(5,1fr);gap:11px;margin-bottom:18px">
     <div class="stat"><div class="sv" id="st-total-cot">0</div><div class="sl">Cotizaciones</div></div>
     <div class="stat"><div class="sv" id="st-total-aut">0</div><div class="sl">Autorizadas</div></div>
     <div class="stat"><div class="sv" id="st-pct">0%</div><div class="sl">Tasa autorización</div></div>
@@ -846,8 +848,12 @@ function updStats(){
   const elAut=document.getElementById('s-aut-count'); if(elAut) elAut.textContent=autCount;
   const totalHoy=deHoy.filter(function(p){return p.estado!=='hist';})
     .reduce(function(s,p){return s+(parseFloat(p.total)||0);},0);
+  const totalHoyAut=deHoy.filter(function(p){return p.estado==='autorizado'||p.estado==='hist';})
+    .reduce(function(s,p){return s+(parseFloat(p.total)||0);},0);
   const elHoy=document.getElementById('s-hoy');
   if(elHoy) elHoy.textContent='L '+fmt(totalHoy);
+  const elHoyAut=document.getElementById('s-hoy-aut');
+  if(elHoyAut) elHoyAut.textContent='L '+fmt(totalHoyAut);
   const elAut2=document.getElementById('s-aut'); if(elAut2) elAut2.textContent='0';
   const elHi=document.getElementById('s-hi'); if(elHi) elHi.textContent='0';
 }
@@ -1235,8 +1241,10 @@ function renderLista(tipo){
           }
         }
         if(ci&&ci.length){
-          compraHtml=`<div style="font-size:10px;margin-top:1px;color:var(--gr);font-weight:600">🏪 ${ci[0].p} · L ${ci[0].c.toFixed(2)} · ${ci[0].f}</div>`;
-          if(ci.length>1) compraHtml+=`<div style="font-size:9px;color:var(--mu)">🏪 ${ci[1].p} · L ${ci[1].c.toFixed(2)}${ci[1].f?' · '+ci[1].f:''}</div>`;
+          // Ordenar por fecha descendente (más reciente primero)
+          const ciSort=ci.slice().sort(function(a,b){ return (b.f||'').localeCompare(a.f||''); });
+          compraHtml=`<div style="font-size:10px;margin-top:1px;color:var(--gr);font-weight:600">🏪 ${ciSort[0].p} · L ${ciSort[0].c.toFixed(2)} · ${ciSort[0].f}</div>`;
+          if(ciSort.length>1) compraHtml+=`<div style="font-size:9px;color:var(--mu)">🏪 ${ciSort[1].p} · L ${ciSort[1].c.toFixed(2)}${ciSort[1].f?' · '+ciSort[1].f:''}</div>`;
         }
       }
       return `<div class="irow" style="grid-template-columns:1fr 60px 90px 80px 30px">
