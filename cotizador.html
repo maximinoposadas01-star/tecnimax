@@ -2812,10 +2812,30 @@ function renderSegItem(item,idx,tipo,ahora){
       +'<button class="btn bxs" onclick="revertirPedido('+idx+',\''+tipo+'\')" style="margin-left:8px;font-size:10px;color:var(--mu)">↩</button>';
   }
 
+  // Buscar info de compras para este producto
+  let compraInfo='';
+  if(Object.keys(DBcompras).length){
+    const desc=(item.desc||item.cod||'').toUpperCase().trim();
+    let ci=null;
+    if(DBcompras[desc]) ci=DBcompras[desc];
+    if(!ci&&desc.length>=8){
+      const keys=Object.keys(DBcompras);
+      for(let k=0;k<keys.length;k++){
+        if(keys[k]===desc||keys[k].indexOf(desc)===0||desc.indexOf(keys[k])===0){ci=DBcompras[keys[k]];break;}
+      }
+    }
+    if(ci&&ci.length){
+      const ciSort=ci.slice().sort(function(a,b){return (b.f||'').localeCompare(a.f||'');});
+      compraInfo='<div style="font-size:10px;color:var(--gr);font-weight:600;margin-top:2px">🏪 '+ciSort[0].p+' · L '+ciSort[0].c.toFixed(2)+' · '+ciSort[0].f+'</div>';
+      if(ciSort.length>1) compraInfo+='<div style="font-size:10px;color:var(--mu);margin-top:1px">🏪 '+ciSort[1].p+' · L '+ciSort[1].c.toFixed(2)+(ciSort[1].f?' · '+ciSort[1].f:'')+'</div>';
+    }
+  }
+
   return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)">'
     +'<div style="flex:1">'
     +'<div style="font-size:13px;font-weight:500">'+(item.desc||item.cod||'—')+'</div>'
     +'<div style="font-size:11px;color:var(--mu)">Cant: '+(item.cantidad||1)+'</div>'
+    +compraInfo
     +tiempoHTML
     +'</div>'
     +'<div style="text-align:right;white-space:nowrap">'+estadoHTML+'</div>'
