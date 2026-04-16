@@ -1442,9 +1442,21 @@ function renderSub(cid,list,isPend){
     const mon=(p.moneda==='USD'?'$':'L')+' '+fmt(p.total);
     const autLabel=esAut?'<span style="font-size:10px;color:var(--gr);font-weight:700"> ✓</span>':'';
     const autBtn=esAut?'':'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>';
+    // Progreso de seguimiento
+    let segProgreso='';
+    if(esAut){
+      const allItems=(p.prods||[]).concat(p.servs||[]);
+      const total=allItems.length;
+      const pedidos=allItems.filter(function(it){return it.seguimiento==='pedido'||it.seguimiento==='llegado';}).length;
+      const llegados=allItems.filter(function(it){return it.seguimiento==='llegado';}).length;
+      if(total>0){
+        const color=llegados===total?'var(--gr)':pedidos>0?'#f59e0b':'var(--mu)';
+        segProgreso=' <span style="font-size:10px;color:'+color+';font-weight:700">'+llegados+'/'+total+'</span>';
+      }
+    }
     const segClick=esAut?'onclick="abrirSeguimiento(\''+p.id+'\')" style="cursor:pointer;text-decoration:underline" title="Ver seguimiento"':'';
     rows+='<tr style="'+rowBg+'">'
-      +'<td><span class="'+badge+'" '+segClick+'>'+p.num+'</span>'+autLabel+'</td>'
+      +'<td><span class="'+badge+'" '+segClick+'>'+p.num+'</span>'+autLabel+segProgreso+'</td>'
       +'<td>'+fFecha(p.fecha)+'</td>'
       +'<td>'+(p.cli.nom||'—')+'</td>'
       +'<td>'+(p.veh.placa||'—')+'</td>'
@@ -1556,9 +1568,21 @@ function renderDash(){
     const accion=esAut
       ?'<button class="btn bgh bsm" onclick="finalizarPF(\''+p.id+'\')" style="color:var(--gr);border-color:var(--gr)">Finalizar</button>'
       :'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>';
+    // Progreso de seguimiento en dashboard
+    let segProgresoD='';
+    if(esAut){
+      const allItemsD=(p.prods||[]).concat(p.servs||[]);
+      const totalD=allItemsD.length;
+      const pedidosD=allItemsD.filter(function(it){return it.seguimiento==='pedido'||it.seguimiento==='llegado';}).length;
+      const llegadosD=allItemsD.filter(function(it){return it.seguimiento==='llegado';}).length;
+      if(totalD>0){
+        const colorD=llegadosD===totalD?'var(--gr)':pedidosD>0?'#f59e0b':'var(--mu)';
+        segProgresoD=' <span style="font-size:10px;color:'+colorD+';font-weight:700">'+llegadosD+'/'+totalD+'</span>';
+      }
+    }
     const numClickD=esAut?'onclick="abrirSeguimiento(\''+p.id+'\')" style="cursor:pointer;text-decoration:underline" title="Ver seguimiento"':'';
     rows+='<tr style="'+rowBg+'">'
-      +'<td><span class="'+badge+'" '+numClickD+'>'+p.num+'</span></td>'
+      +'<td><span class="'+badge+'" '+numClickD+'>'+p.num+'</span>'+segProgresoD+'</td>'
       +'<td style="font-size:11px;color:var(--mu)">'+hora+'</td>'
       +'<td style="font-size:11px;color:var(--mu);font-weight:600">'+vend+'</td>'
       +'<td>'+(p.cli.nom||'—')+'</td>'
@@ -2800,10 +2824,21 @@ function formatTiempo(minutos){
 
 function iniciarPedido(idx,tipo){
   _segProdIdx={idx:idx,tipo:tipo};
-  // Llenar select de proveedores
+  // Extraer proveedores únicos de DBcompras + lista manual
+  const provSet={};
+  // De DBcompras
+  Object.values(DBcompras).forEach(function(entradas){
+    if(Array.isArray(entradas)){
+      entradas.forEach(function(e){ if(e&&e.p) provSet[e.p.trim().toUpperCase()]=true; });
+    }
+  });
+  // De lista manual de Config
+  _proveedores.forEach(function(p){ provSet[p.toUpperCase()]=true; });
+  const provList=Object.keys(provSet).sort();
+
   const sel=document.getElementById('pedir-prov');
   sel.innerHTML='<option value="">— Seleccionar proveedor —</option>';
-  _proveedores.forEach(function(p){
+  provList.forEach(function(p){
     sel.innerHTML+='<option value="'+p+'">'+p+'</option>';
   });
   document.getElementById('pedir-prov-manual').value='';
