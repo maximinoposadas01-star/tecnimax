@@ -2812,23 +2812,13 @@ function renderSegItem(item,idx,tipo,ahora){
       +'<button class="btn bxs" onclick="revertirPedido('+idx+',\''+tipo+'\')" style="margin-left:8px;font-size:10px;color:var(--mu)">↩</button>';
   }
 
-  // Buscar info de compras para este producto
+  // Buscar info de compras usando buscarCompra (misma lógica que la proforma)
   let compraInfo='';
-  if(Object.keys(DBcompras).length){
-    const desc=(item.desc||item.cod||'').toUpperCase().trim();
-    let ci=null;
-    if(DBcompras[desc]) ci=DBcompras[desc];
-    if(!ci&&desc.length>=8){
-      const keys=Object.keys(DBcompras);
-      for(let k=0;k<keys.length;k++){
-        if(keys[k]===desc||keys[k].indexOf(desc)===0||desc.indexOf(keys[k])===0){ci=DBcompras[keys[k]];break;}
-      }
-    }
-    if(ci&&ci.length){
-      const ciSort=ci.slice().sort(function(a,b){return (b.f||'').localeCompare(a.f||'');});
-      compraInfo='<div style="font-size:10px;color:var(--gr);font-weight:600;margin-top:2px">🏪 '+ciSort[0].p+' · L '+ciSort[0].c.toFixed(2)+' · '+ciSort[0].f+'</div>';
-      if(ciSort.length>1) compraInfo+='<div style="font-size:10px;color:var(--mu);margin-top:1px">🏪 '+ciSort[1].p+' · L '+ciSort[1].c.toFixed(2)+(ciSort[1].f?' · '+ciSort[1].f:'')+'</div>';
-    }
+  const ci=buscarCompra(item.cod||item.desc||'');
+  if(ci&&ci.length){
+    const ciSort=ci.slice().sort(function(a,b){return (b.f||'').localeCompare(a.f||'');});
+    compraInfo='<div style="font-size:10px;color:var(--gr);font-weight:600;margin-top:2px">🏪 '+ciSort[0].p+' · L '+ciSort[0].c.toFixed(2)+' · '+ciSort[0].f+'</div>';
+    if(ciSort.length>1) compraInfo+='<div style="font-size:10px;color:var(--mu);margin-top:1px">🏪 '+ciSort[1].p+' · L '+ciSort[1].c.toFixed(2)+(ciSort[1].f?' · '+ciSort[1].f:'')+'</div>';
   }
 
   return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)">'
@@ -2871,8 +2861,20 @@ function iniciarPedido(idx,tipo){
   _proveedores.forEach(function(p){ provSet[p.toUpperCase()]=true; });
   _provListCache=Object.keys(provSet).sort();
 
+  // Pre-llenar con proveedor de DBcompras si existe
+  const pf_pre=proformas.find(function(p){return p.id===_segPfId;});
+  let provPre='';
+  if(pf_pre&&_segProdIdx!==null){
+    const arr_pre=_segProdIdx.tipo==='prod'?pf_pre.prods:pf_pre.servs;
+    const it_pre=arr_pre[_segProdIdx.idx];
+    const ci_pre=it_pre?buscarCompra(it_pre.cod||it_pre.desc||''):null;
+    if(ci_pre&&ci_pre.length){
+      const sorted=ci_pre.slice().sort(function(a,b){return (b.f||'').localeCompare(a.f||'');});
+      provPre=sorted[0].p||'';
+    }
+  }
   const inp=document.getElementById('pedir-prov-input');
-  inp.value='';
+  inp.value=provPre;
   document.getElementById('pedir-prov-lista').style.display='none';
   document.getElementById('modal-pedir').classList.add('on');
   setTimeout(function(){ inp.focus(); },100);
