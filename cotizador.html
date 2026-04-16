@@ -1454,8 +1454,12 @@ function renderSub(cid,list,isPend){
       const pedidos=allItems.filter(function(it){return it.seguimiento==='pedido'||it.seguimiento==='llegado';}).length;
       const llegados=allItems.filter(function(it){return it.seguimiento==='llegado';}).length;
       if(total>0){
-        const color=llegados===total?'var(--gr)':pedidos>0?'#f59e0b':'var(--mu)';
-        segProgreso=' <span style="font-size:10px;color:'+color+';font-weight:700">'+llegados+'/'+total+'</span>';
+        let icono='', color='var(--mu)';
+        const sinPedir=total-pedidos; // los que no tienen ningún estado
+        if(llegados===total){ icono=' ✅'; color='var(--gr)'; }
+        else if(pedidos===total){ icono=' 🚚'; color='#3b82f6'; }
+        else if(pedidos>0){ icono=' ⏳'; color='#f59e0b'; }
+        segProgreso=' <span style="font-size:10px;color:'+color+';font-weight:700">'+llegados+'/'+total+icono+'</span>';
       }
     }
     const segClick=esAut?'onclick="abrirSeguimiento(\''+p.id+'\')" style="cursor:pointer;text-decoration:underline" title="Ver seguimiento"':'';
@@ -1580,8 +1584,11 @@ function renderDash(){
       const pedidosD=allItemsD.filter(function(it){return it.seguimiento==='pedido'||it.seguimiento==='llegado';}).length;
       const llegadosD=allItemsD.filter(function(it){return it.seguimiento==='llegado';}).length;
       if(totalD>0){
-        const colorD=llegadosD===totalD?'var(--gr)':pedidosD>0?'#f59e0b':'var(--mu)';
-        segProgresoD=' <span style="font-size:10px;color:'+colorD+';font-weight:700">'+llegadosD+'/'+totalD+'</span>';
+        let iconoD='', colorD='var(--mu)';
+        if(llegadosD===totalD){ iconoD=' ✅'; colorD='var(--gr)'; }
+        else if(pedidosD===totalD){ iconoD=' 🚚'; colorD='#3b82f6'; }
+        else if(pedidosD>0){ iconoD=' ⏳'; colorD='#f59e0b'; }
+        segProgresoD=' <span style="font-size:10px;color:'+colorD+';font-weight:700">'+llegadosD+'/'+totalD+iconoD+'</span>';
       }
     }
     const numClickD=esAut?'onclick="abrirSeguimiento(\''+p.id+'\')" style="cursor:pointer;text-decoration:underline" title="Ver seguimiento"':'';
