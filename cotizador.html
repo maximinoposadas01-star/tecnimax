@@ -497,6 +497,11 @@ tbody tr:hover td{background:var(--s2)}
     </div>
   </div>
   <div class="card">
+    <div class="ctitle">Proveedores de Repuestos</div>
+    <div id="cfg-proveedores"></div>
+    <button class="btn bgh bsm" onclick="agregarProveedor()" style="margin-top:8px">＋ Agregar proveedor</button>
+  </div>
+  <div class="card">
     <div class="ctitle">Contactos de Compras (WhatsApp)</div>
     <div id="cfg-contactos"></div>
     <button class="btn bgh bsm" onclick="agregarContacto()" style="margin-top:8px">＋ Agregar contacto</button>
@@ -1437,8 +1442,9 @@ function renderSub(cid,list,isPend){
     const mon=(p.moneda==='USD'?'$':'L')+' '+fmt(p.total);
     const autLabel=esAut?'<span style="font-size:10px;color:var(--gr);font-weight:700"> ✓</span>':'';
     const autBtn=esAut?'':'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>';
+    const segClick=esAut?'onclick="abrirSeguimiento(\''+p.id+'\')" style="cursor:pointer;text-decoration:underline" title="Ver seguimiento"':'';
     rows+='<tr style="'+rowBg+'">'
-      +'<td><span class="'+badge+'">'+p.num+'</span>'+autLabel+'</td>'
+      +'<td><span class="'+badge+'" '+segClick+'>'+p.num+'</span>'+autLabel+'</td>'
       +'<td>'+fFecha(p.fecha)+'</td>'
       +'<td>'+(p.cli.nom||'—')+'</td>'
       +'<td>'+(p.veh.placa||'—')+'</td>'
@@ -1550,8 +1556,9 @@ function renderDash(){
     const accion=esAut
       ?'<button class="btn bgh bsm" onclick="finalizarPF(\''+p.id+'\')" style="color:var(--gr);border-color:var(--gr)">Finalizar</button>'
       :'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>';
+    const numClickD=esAut?'onclick="abrirSeguimiento(\''+p.id+'\')" style="cursor:pointer;text-decoration:underline" title="Ver seguimiento"':'';
     rows+='<tr style="'+rowBg+'">'
-      +'<td><span class="'+badge+'">'+p.num+'</span></td>'
+      +'<td><span class="'+badge+'" '+numClickD+'>'+p.num+'</span></td>'
       +'<td style="font-size:11px;color:var(--mu)">'+hora+'</td>'
       +'<td style="font-size:11px;color:var(--mu);font-weight:600">'+vend+'</td>'
       +'<td>'+(p.cli.nom||'—')+'</td>'
@@ -1992,9 +1999,13 @@ async function cargarConfig(){
         const el=document.getElementById('cfg-terminos');
         if(el) el.value=_terminos;
       }
+      if(json.data.proveedores){
+        try{ _proveedores=JSON.parse(json.data.proveedores); }catch(e){ _proveedores=[]; }
+      }
     }
   }catch(e){}
   renderContactos();
+  renderProveedores();
 }
 
 let _terminos = '';
@@ -2647,7 +2658,239 @@ function verStats(periodo){
     +'</tr></thead><tbody>'+rows+'</tbody></table>';
 }
 
+
+// ══════════════════════════════════════════
+//  PROVEEDORES
+// ══════════════════════════════════════════
+let _proveedores = [];
+
+function getProveedores(){ return _proveedores; }
+
+function guardarProveedores(provs){
+  _proveedores = provs;
+  postScript('saveConfig',{proveedores:JSON.stringify(provs)}).catch(function(){});
+}
+
+function renderProveedores(){
+  const cont=document.getElementById('cfg-proveedores');
+  if(!cont) return;
+  if(!_proveedores.length){
+    cont.innerHTML='<div style="font-size:12px;color:var(--mu);padding:8px 0">Sin proveedores — agrega uno</div>';
+    return;
+  }
+  cont.innerHTML=_proveedores.map(function(p,i){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1)">'
+      +'<div style="flex:1;font-weight:600;font-size:13px">'+p+'</div>'
+      +'<button class="btn br bsm" onclick="eliminarProveedor('+i+')" style="font-size:11px;padding:2px 8px">✕</button>'
+      +'</div>';
+  }).join('');
+}
+
+function agregarProveedor(){
+  const nombre=prompt('Nombre del proveedor (ej: REFACSA, MUNDIREPUESTOS):');
+  if(!nombre||!nombre.trim()) return;
+  const provs=getProveedores();
+  if(provs.includes(nombre.trim())){ toast('Proveedor ya existe','err'); return; }
+  provs.push(nombre.trim().toUpperCase());
+  guardarProveedores(provs);
+  renderProveedores();
+  toast('Proveedor guardado','ok');
+}
+
+function eliminarProveedor(i){
+  const provs=getProveedores();
+  if(!confirm('¿Eliminar proveedor "'+provs[i]+'"?')) return;
+  provs.splice(i,1);
+  guardarProveedores(provs);
+  renderProveedores();
+}
+
+// ══════════════════════════════════════════
+//  SEGUIMIENTO DE PRODUCTOS
+// ══════════════════════════════════════════
+let _segPfId = null;   // proforma activa en el modal
+let _segProdIdx = null; // índice del producto que se está pidiendo
+
+function abrirSeguimiento(pfId){
+  const pf=proformas.find(function(p){return p.id===pfId;});
+  if(!pf) return;
+  _segPfId=pfId;
+  document.getElementById('seg-titulo').textContent='📦 '+pf.num+' — '+(pf.veh.ma||'')+' '+(pf.veh.mo||'')+' '+(pf.veh.a||'');
+  renderSeguimiento(pf);
+  document.getElementById('modal-seguimiento').classList.add('on');
+}
+
+function renderSeguimiento(pf){
+  const ahora=new Date();
+  let html='';
+
+  // Productos
+  if(pf.prods&&pf.prods.length){
+    html+='<div style="font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Productos</div>';
+    pf.prods.forEach(function(prod,i){
+      html+=renderSegItem(prod,i,'prod',ahora);
+    });
+  }
+
+  // Servicios
+  if(pf.servs&&pf.servs.length){
+    html+='<div style="font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Servicios</div>';
+    pf.servs.forEach(function(serv,i){
+      html+=renderSegItem(serv,i,'serv',ahora);
+    });
+  }
+
+  document.getElementById('seg-content').innerHTML=html||'<div class="empty">Sin items</div>';
+}
+
+function renderSegItem(item,idx,tipo,ahora){
+  const est=item.seguimiento||'pendiente';
+  let estadoHTML='';
+  let tiempoHTML='';
+
+  if(est==='pendiente'){
+    estadoHTML='<span style="color:var(--mu);font-size:12px">○ Sin pedir</span>'
+      +'<button class="btn bg bxs" onclick="iniciarPedido('+idx+',\''+tipo+'\')" style="margin-left:8px">📦 Pedir</button>';
+  } else if(est==='pedido'){
+    const prov=item.seg_proveedor||'—';
+    const fec=item.seg_fecha_pedido||'';
+    const diffMin=fec?Math.floor((ahora-new Date(fec))/60000):0;
+    const tiempoStr=fec?formatTiempo(diffMin):'';
+    tiempoHTML='<div style="font-size:11px;color:var(--mu);margin-top:3px">'+prov+(fec?' · '+formatFechaHora(fec):'')+(tiempoStr?' <span style="color:#f59e0b;font-weight:600">('+tiempoStr+')</span>':'')+'</div>';
+    estadoHTML='<span style="color:#f59e0b;font-weight:600;font-size:12px">📦 Pedido</span>'
+      +'<button class="btn bxs" onclick="marcarLlegado('+idx+',\''+tipo+'\')" style="margin-left:8px;background:var(--gr);color:#fff;border:0">✅ Llegó</button>';
+  } else if(est==='llegado'){
+    const fecP=item.seg_fecha_pedido||'';
+    const fecL=item.seg_fecha_llegada||'';
+    let duracion='';
+    if(fecP&&fecL){
+      const diffMin=Math.floor((new Date(fecL)-new Date(fecP))/60000);
+      duracion=' · Tardó '+formatTiempo(diffMin);
+    }
+    const prov=item.seg_proveedor||'—';
+    tiempoHTML='<div style="font-size:11px;color:var(--mu);margin-top:3px">'+prov+(fecL?' · Llegó '+formatFechaHora(fecL):'')+(duracion?'<span style="color:var(--gr);font-weight:600"> '+duracion+'</span>':'')+'</div>';
+    estadoHTML='<span style="color:var(--gr);font-weight:700;font-size:12px">✅ Llegó</span>'
+      +'<button class="btn bxs" onclick="revertirPedido('+idx+',\''+tipo+'\')" style="margin-left:8px;font-size:10px;color:var(--mu)">↩</button>';
+  }
+
+  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)">'
+    +'<div style="flex:1">'
+    +'<div style="font-size:13px;font-weight:500">'+(item.desc||item.cod||'—')+'</div>'
+    +'<div style="font-size:11px;color:var(--mu)">Cant: '+(item.cantidad||1)+'</div>'
+    +tiempoHTML
+    +'</div>'
+    +'<div style="text-align:right;white-space:nowrap">'+estadoHTML+'</div>'
+    +'</div>';
+}
+
+function formatFechaHora(isoStr){
+  try{
+    const d=new Date(isoStr);
+    return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')
+      +' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }catch(e){ return isoStr||''; }
+}
+
+function formatTiempo(minutos){
+  if(minutos<60) return minutos+'min';
+  const h=Math.floor(minutos/60);
+  const m=minutos%60;
+  return h+'h'+(m>0?' '+m+'min':'');
+}
+
+function iniciarPedido(idx,tipo){
+  _segProdIdx={idx:idx,tipo:tipo};
+  // Llenar select de proveedores
+  const sel=document.getElementById('pedir-prov');
+  sel.innerHTML='<option value="">— Seleccionar proveedor —</option>';
+  _proveedores.forEach(function(p){
+    sel.innerHTML+='<option value="'+p+'">'+p+'</option>';
+  });
+  document.getElementById('pedir-prov-manual').value='';
+  document.getElementById('modal-pedir').classList.add('on');
+}
+
+function confirmarPedido(){
+  if(!_segPfId||!_segProdIdx) return;
+  const sel=document.getElementById('pedir-prov').value;
+  const manual=document.getElementById('pedir-prov-manual').value.trim();
+  const prov=manual||(sel||'');
+  if(!prov){ toast('Selecciona o escribe un proveedor','err'); return; }
+
+  const pf=proformas.find(function(p){return p.id===_segPfId;});
+  if(!pf) return;
+  const arr=_segProdIdx.tipo==='prod'?pf.prods:pf.servs;
+  arr[_segProdIdx.idx].seguimiento='pedido';
+  arr[_segProdIdx.idx].seg_proveedor=prov.toUpperCase();
+  arr[_segProdIdx.idx].seg_fecha_pedido=new Date().toISOString();
+
+  savePF();
+  syncPFtoSheet(pf);
+  cerrarModal('modal-pedir');
+  renderSeguimiento(pf);
+  toast('📦 Pedido a '+prov,'ok');
+}
+
+function marcarLlegado(idx,tipo){
+  const pf=proformas.find(function(p){return p.id===_segPfId;});
+  if(!pf) return;
+  const arr=tipo==='prod'?pf.prods:pf.servs;
+  arr[idx].seguimiento='llegado';
+  arr[idx].seg_fecha_llegada=new Date().toISOString();
+  savePF();
+  syncPFtoSheet(pf);
+  renderSeguimiento(pf);
+  toast('✅ Producto marcado como llegado','ok');
+}
+
+function revertirPedido(idx,tipo){
+  const pf=proformas.find(function(p){return p.id===_segPfId;});
+  if(!pf) return;
+  if(!confirm('¿Revertir estado a Sin pedir?')) return;
+  const arr=tipo==='prod'?pf.prods:pf.servs;
+  delete arr[idx].seguimiento;
+  delete arr[idx].seg_proveedor;
+  delete arr[idx].seg_fecha_pedido;
+  delete arr[idx].seg_fecha_llegada;
+  savePF();
+  syncPFtoSheet(pf);
+  renderSeguimiento(pf);
+}
+
 </script>
+
+
+<!-- Modal seguimiento de productos -->
+<div class="mbg" id="modal-seguimiento">
+  <div class="modal" style="max-width:620px">
+    <div class="mtitle" id="seg-titulo">Seguimiento de productos</div>
+    <div id="seg-content"></div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn bgh" onclick="cerrarModal('modal-seguimiento')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal marcar pedido -->
+<div class="mbg" id="modal-pedir">
+  <div class="modal" style="max-width:380px">
+    <div class="mtitle">Marcar como Pedido</div>
+    <div class="f">
+      <label>Proveedor</label>
+      <select id="pedir-prov">
+        <option value="">— Seleccionar proveedor —</option>
+      </select>
+    </div>
+    <div class="f">
+      <label>O escribir proveedor</label>
+      <input id="pedir-prov-manual" placeholder="Proveedor manual...">
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn bgh" onclick="cerrarModal('modal-pedir')">Cancelar</button>
+      <button class="btn bg" onclick="confirmarPedido()">✓ Confirmar</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
