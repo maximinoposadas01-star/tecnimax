@@ -2774,7 +2774,8 @@ function renderSegItem(item,idx,tipo,ahora){
 
   if(est==='pendiente'){
     estadoHTML='<span style="color:var(--mu);font-size:12px">○ Sin pedir</span>'
-      +'<button class="btn bg bxs" onclick="iniciarPedido('+idx+',\''+tipo+'\')" style="margin-left:8px">📦 Pedir</button>';
+      +'<button class="btn bg bxs" onclick="iniciarPedido('+idx+',\''+tipo+'\')" style="margin-left:8px">📦 Pedir</button>'
+      +'<button class="btn bxs" onclick="marcarBodega('+idx+',\''+tipo+'\')" style="margin-left:4px;background:#7c3aed;color:#fff;border:0" title="Disponible en bodega">🏪 Bodega</button>';
   } else if(est==='pedido'){
     const prov=item.seg_proveedor||'—';
     const fec=item.seg_fecha_pedido||'';
@@ -2863,6 +2864,7 @@ function confirmarPedido(){
   syncPFtoSheet(pf);
   cerrarModal('modal-pedir');
   renderSeguimiento(pf);
+  _actualizarVistas();
   toast('📦 Pedido a '+prov,'ok');
 }
 
@@ -2875,7 +2877,28 @@ function marcarLlegado(idx,tipo){
   savePF();
   syncPFtoSheet(pf);
   renderSeguimiento(pf);
+  _actualizarVistas();
   toast('✅ Producto marcado como llegado','ok');
+}
+
+function marcarBodega(idx,tipo){
+  const pf=proformas.find(function(p){return p.id===_segPfId;});
+  if(!pf) return;
+  const arr=tipo==='prod'?pf.prods:pf.servs;
+  arr[idx].seguimiento='llegado';
+  arr[idx].seg_proveedor='BODEGA';
+  arr[idx].seg_fecha_pedido=new Date().toISOString();
+  arr[idx].seg_fecha_llegada=new Date().toISOString();
+  savePF();
+  syncPFtoSheet(pf);
+  renderSeguimiento(pf);
+  _actualizarVistas();
+  toast('📦 Producto tomado de bodega','ok');
+}
+
+function _actualizarVistas(){
+  if(document.getElementById('page-dash').classList.contains('on')) renderDash();
+  if(document.getElementById('page-hist').classList.contains('on')) renderHist();
 }
 
 function revertirPedido(idx,tipo){
@@ -2890,6 +2913,7 @@ function revertirPedido(idx,tipo){
   savePF();
   syncPFtoSheet(pf);
   renderSeguimiento(pf);
+  _actualizarVistas();
 }
 
 </script>
