@@ -1449,7 +1449,7 @@ function renderSub(cid,list,isPend){
     // Progreso de seguimiento
     let segProgreso='';
     if(esAut){
-      const allItems=(p.prods||[]).concat(p.servs||[]);
+      const allItems=(p.prods||[]);
       const total=allItems.length;
       const pedidos=allItems.filter(function(it){return it.seguimiento==='pedido'||it.seguimiento==='llegado';}).length;
       const llegados=allItems.filter(function(it){return it.seguimiento==='llegado';}).length;
@@ -1575,7 +1575,7 @@ function renderDash(){
     // Progreso de seguimiento en dashboard
     let segProgresoD='';
     if(esAut){
-      const allItemsD=(p.prods||[]).concat(p.servs||[]);
+      const allItemsD=(p.prods||[]);
       const totalD=allItemsD.length;
       const pedidosD=allItemsD.filter(function(it){return it.seguimiento==='pedido'||it.seguimiento==='llegado';}).length;
       const llegadosD=allItemsD.filter(function(it){return it.seguimiento==='llegado';}).length;
@@ -2760,13 +2760,7 @@ function renderSeguimiento(pf){
     });
   }
 
-  // Servicios
-  if(pf.servs&&pf.servs.length){
-    html+='<div style="font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Servicios</div>';
-    pf.servs.forEach(function(serv,i){
-      html+=renderSegItem(serv,i,'serv',ahora);
-    });
-  }
+  // Servicios no se muestran en seguimiento (no se piden a proveedores)
 
   document.getElementById('seg-content').innerHTML=html||'<div class="empty">Sin items</div>';
 }
