@@ -60,11 +60,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--tx);min-h
 
 .nav{display:flex;align-items:center;justify-content:space-between;padding:0 12px;height:52px;
   background:#1a1a2e;border-bottom:3px solid var(--gold);position:sticky;top:0;z-index:100}
-.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;display:flex;align-items:center;gap:8px}
-.logo-i{width:28px;height:28px;background:var(--gold);border-radius:5px;display:grid;place-items:center;font-size:14px;color:#fff}
+.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#fff;display:flex;align-items:center;gap:6px}
+.logo-i{width:22px;height:22px;background:var(--gold);border-radius:5px;display:grid;place-items:center;font-size:14px;color:#fff}
 .tabs{display:flex;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
-.tab{padding:6px 10px;border-radius:var(--r2);cursor:pointer;font-size:12px;font-weight:500;
+.tab{padding:5px 8px;border-radius:var(--r2);cursor:pointer;font-size:12px;font-weight:500;
   color:rgba(255,255,255,.6);border:none;background:transparent;transition:all .15s;white-space:nowrap;flex-shrink:0}
 .tab:hover{color:#fff;background:rgba(255,255,255,.1)}
 .tab.on{color:#fff;background:var(--gold)}
@@ -284,8 +284,8 @@ tbody tr:hover td{background:var(--s2)}
   <div class="tabs">
     <button class="tab on"  data-page="dash">Inicio</button>
     <button class="tab"     data-page="nueva">Nueva</button>
-    <button class="tab"     data-page="hist">Cotizaciones</button>
-    <button class="tab"     data-page="stats">📊 Stats</button>
+    <button class="tab"     data-page="hist">Cotización</button>
+    <button class="tab"     data-page="stats">📊</button>
     <button class="tab"     data-page="imp">Config</button>
   </div>
 </nav>
@@ -846,8 +846,8 @@ function updStats(){
   const autCount=proformas.filter(function(p){return p.estado==='autorizado';}).length;
   const elPend=document.getElementById('s-pend-count'); if(elPend) elPend.textContent=pendCount;
   const elAut=document.getElementById('s-aut-count'); if(elAut) elAut.textContent=autCount;
-  const totalHoy=deHoy.filter(function(p){return p.estado!=='hist';})
-    .reduce(function(s,p){return s+(parseFloat(p.total)||0);},0);
+  // Cotizado hoy incluye todos los estados (pend, autorizado, hist)
+  const totalHoy=deHoy.reduce(function(s,p){return s+(parseFloat(p.total)||0);},0);
   const totalHoyAut=deHoy.filter(function(p){return p.estado==='autorizado'||p.estado==='hist';})
     .reduce(function(s,p){return s+(parseFloat(p.total)||0);},0);
   const elHoy=document.getElementById('s-hoy');
@@ -2552,7 +2552,7 @@ function actualizarBadgeVendedor(nombre){
   if(!badge){
     badge = document.createElement('span');
     badge.id = 'badge-vendedor';
-    badge.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;padding:3px 9px;border-radius:12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap';
+    badge.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;padding:2px 7px;border-radius:12px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap';
     badge.title = nombre + ' — clic para cambiar';
     badge.onclick = cambiarVendedorLocal;
     const nav = document.querySelector('.tabs');
