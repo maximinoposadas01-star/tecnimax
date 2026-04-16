@@ -2823,34 +2823,51 @@ function formatTiempo(minutos){
   return h+'h'+(m>0?' '+m+'min':'');
 }
 
+let _provListCache=[];
+
 function iniciarPedido(idx,tipo){
   _segProdIdx={idx:idx,tipo:tipo};
   // Extraer proveedores únicos de DBcompras + lista manual
   const provSet={};
-  // De DBcompras
   Object.values(DBcompras).forEach(function(entradas){
     if(Array.isArray(entradas)){
       entradas.forEach(function(e){ if(e&&e.p) provSet[e.p.trim().toUpperCase()]=true; });
     }
   });
-  // De lista manual de Config
   _proveedores.forEach(function(p){ provSet[p.toUpperCase()]=true; });
-  const provList=Object.keys(provSet).sort();
+  _provListCache=Object.keys(provSet).sort();
 
-  const sel=document.getElementById('pedir-prov');
-  sel.innerHTML='<option value="">— Seleccionar proveedor —</option>';
-  provList.forEach(function(p){
-    sel.innerHTML+='<option value="'+p+'">'+p+'</option>';
-  });
-  document.getElementById('pedir-prov-manual').value='';
+  const inp=document.getElementById('pedir-prov-input');
+  inp.value='';
+  document.getElementById('pedir-prov-lista').style.display='none';
   document.getElementById('modal-pedir').classList.add('on');
+  setTimeout(function(){ inp.focus(); },100);
+}
+
+function filtrarProveedores(q){
+  const lista=document.getElementById('pedir-prov-lista');
+  if(!q.trim()){ lista.style.display='none'; return; }
+  const ql=q.toUpperCase();
+  const matches=_provListCache.filter(function(p){ return p.includes(ql); });
+  if(!matches.length){ lista.style.display='none'; return; }
+  lista.innerHTML=matches.slice(0,12).map(function(p){
+    return '<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--b1);font-size:13px"'
+      +' onmousedown="seleccionarProveedor(''+p+'')"'
+      +' onmouseover="this.style.background='var(--s2)'"'
+      +' onmouseout="this.style.background=''">'
+      +p+'</div>';
+  }).join('');
+  lista.style.display='block';
+}
+
+function seleccionarProveedor(nombre){
+  document.getElementById('pedir-prov-input').value=nombre;
+  document.getElementById('pedir-prov-lista').style.display='none';
 }
 
 function confirmarPedido(){
   if(!_segPfId||!_segProdIdx) return;
-  const sel=document.getElementById('pedir-prov').value;
-  const manual=document.getElementById('pedir-prov-manual').value.trim();
-  const prov=manual||(sel||'');
+  const prov=document.getElementById('pedir-prov-input').value.trim();
   if(!prov){ toast('Selecciona o escribe un proveedor','err'); return; }
 
   const pf=proformas.find(function(p){return p.id===_segPfId;});
@@ -2934,15 +2951,15 @@ function revertirPedido(idx,tipo){
 <div class="mbg" id="modal-pedir">
   <div class="modal" style="max-width:380px">
     <div class="mtitle">Marcar como Pedido</div>
-    <div class="f">
+    <div class="f" style="position:relative">
       <label>Proveedor</label>
-      <select id="pedir-prov">
-        <option value="">— Seleccionar proveedor —</option>
-      </select>
-    </div>
-    <div class="f">
-      <label>O escribir proveedor</label>
-      <input id="pedir-prov-manual" placeholder="Proveedor manual...">
+      <input id="pedir-prov-input" placeholder="Buscar proveedor..." autocomplete="off"
+        oninput="filtrarProveedores(this.value)"
+        onkeydown="if(event.key==='Escape') cerrarModal('modal-pedir')"
+        style="width:100%">
+      <div id="pedir-prov-lista" style="position:absolute;top:100%;left:0;right:0;max-height:220px;overflow-y:auto;
+        background:var(--s1);border:1px solid var(--b2);border-radius:var(--r2);z-index:300;display:none;
+        box-shadow:0 8px 24px rgba(0,0,0,.15)"></div>
     </div>
     <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
       <button class="btn bgh" onclick="cerrarModal('modal-pedir')">Cancelar</button>
