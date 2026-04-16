@@ -615,6 +615,7 @@ tbody tr:hover td{background:var(--s2)}
     <div class="stat"><div class="sv" id="st-total-cot">0</div><div class="sl">Cotizaciones</div></div>
     <div class="stat"><div class="sv" id="st-total-aut">0</div><div class="sl">Autorizadas</div></div>
     <div class="stat"><div class="sv" id="st-pct">0%</div><div class="sl">Tasa autorización</div></div>
+    <div class="stat"><div class="sv" id="st-monto-cot">L 0</div><div class="sl">Total cotizado</div></div>
     <div class="stat"><div class="sv" id="st-monto">L 0</div><div class="sl">Total autorizado</div></div>
   </div>
   <!-- Tabla detalle -->
@@ -2629,8 +2630,9 @@ function verStats(periodo){
   pfs.forEach(function(p){
     const f=String(p.fecha).slice(0,10);
     const key=agrupar==='mes'?f.slice(0,7):f;
-    if(!grupos[key]) grupos[key]={cot:0,aut:0,monto:0};
+    if(!grupos[key]) grupos[key]={cot:0,aut:0,monto:0,montoCot:0};
     grupos[key].cot++;
+    grupos[key].montoCot+=(parseFloat(p.total)||0);
     if(p.estado==='autorizado'||p.estado==='hist'){
       grupos[key].aut++;
       grupos[key].monto+=(parseFloat(p.total)||0);
@@ -2638,16 +2640,19 @@ function verStats(periodo){
   });
 
   // Totales para resumen
-  let totCot=0,totAut=0,totMonto=0;
+  let totCot=0,totAut=0,totMonto=0,totMontoCot=0;
   Object.keys(grupos).forEach(function(k){
     totCot+=grupos[k].cot;
     totAut+=grupos[k].aut;
     totMonto+=grupos[k].monto;
+    totMontoCot+=grupos[k].montoCot||0;
   });
   document.getElementById('st-total-cot').textContent=totCot;
   document.getElementById('st-total-aut').textContent=totAut;
   document.getElementById('st-pct').textContent=totCot?Math.round(totAut/totCot*100)+'%':'0%';
   document.getElementById('st-monto').textContent='L '+fmt(totMonto);
+  const elCotMonto=document.getElementById('st-monto-cot');
+  if(elCotMonto) elCotMonto.textContent='L '+fmt(totMontoCot);
 
   // Tabla
   const keys=Object.keys(grupos).sort().reverse();
@@ -2678,6 +2683,7 @@ function verStats(periodo){
       +'<td style="font-weight:600">'+label+'</td>'
       +'<td style="text-align:center">'+g.cot+'</td>'
       +'<td style="text-align:center;color:'+color+';font-weight:600">'+g.aut+bar+'</td>'
+      +'<td style="text-align:right;color:var(--mu);white-space:nowrap">L '+fmt(g.montoCot||0)+'</td>'
       +'<td style="text-align:right;color:var(--gold);font-weight:600;white-space:nowrap">L '+fmt(g.monto)+'</td>'
       +'<td style="text-align:center;color:'+color+';font-weight:600">'+pct+'%</td>'
       +'</tr>';
@@ -2688,6 +2694,7 @@ function verStats(periodo){
     +'<th>Período</th>'
     +'<th style="text-align:center">Cotizadas</th>'
     +'<th style="text-align:center">Autorizadas</th>'
+    +'<th style="text-align:right">Monto cotizado</th>'
     +'<th style="text-align:right">Monto autorizado</th>'
     +'<th style="text-align:center">% Éxito</th>'
     +'</tr></thead><tbody>'+rows+'</tbody></table>';
