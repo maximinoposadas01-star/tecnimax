@@ -33,14 +33,20 @@ if('serviceWorker' in navigator){
   // Primero: desregistrar cualquier SW viejo para forzar actualización
   navigator.serviceWorker.getRegistrations().then(regs => {
     regs.forEach(reg => {
-      if(reg.active && reg.active.scriptURL && reg.active.scriptURL.indexOf('202604') !== -1){
-        reg.unregister();
+      // Desregistrar cualquier SW anterior a pr53
+      if(reg.active && reg.active.scriptURL){
+        // Siempre desregistra al cargar la versión nueva la primera vez
+        const marker = localStorage.getItem('tm_sw_version');
+        if(marker !== 'pr53'){
+          reg.unregister();
+        }
       }
     });
+    localStorage.setItem('tm_sw_version', 'pr53');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604171600-pr52';
+    const VERSION = '202604171730-pr53';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -3074,6 +3080,11 @@ function guardarPedidoRapido(){
   const cant=parseInt(document.getElementById('pr-cant').value)||1;
   const vehiculo=document.getElementById('pr-vehiculo').value.trim();
   const vendedor=localStorage.getItem('tm_vendedor_nombre')||'';
+  
+  if(!vendedor){
+    console.warn('[PR] Sin vendedor configurado en localStorage.tm_vendedor_nombre');
+  }
+  
   const pr={
     id: Date.now().toString(36)+Math.random().toString(36).slice(2,5),
     desc: desc.toUpperCase(),
@@ -3090,6 +3101,7 @@ function guardarPedidoRapido(){
     fecha_entrega: '',
     notas: ''
   };
+  console.log('[PR] Guardando pedido nuevo:', pr);
   _pedidosRapidos.unshift(pr);
   guardarPedidosRapidosSheet();
   renderPedidosRapidos();
@@ -3098,8 +3110,25 @@ function guardarPedidoRapido(){
 }
 
 function guardarPedidosRapidosSheet(){
-  postScript('savePedidosRapidos',{pedidos:_pedidosRapidos}).catch(function(){});
-  localStorage.setItem('tm_pedidos_rapidos', JSON.stringify(_pedidosRapidos));
+  try {
+    localStorage.setItem('tm_pedidos_rapidos', JSON.stringify(_pedidosRapidos));
+  } catch(e) {
+    console.error('[PR] Error guardando en localStorage:', e);
+  }
+  postScript('savePedidosRapidos',{pedidos:_pedidosRapidos})
+    .then(function(r){
+      if(!r){ console.error('[PR] Respuesta nula del servidor'); return; }
+      if(!r.ok){
+        console.error('[PR] Error del servidor al guardar:', r);
+        toast('⚠️ No se sincronizó con Sheets: '+(r.error||'desconocido'),'err');
+      } else {
+        console.log('[PR] Guardado en Sheets OK. Saved:', r.saved);
+      }
+    })
+    .catch(function(err){
+      console.error('[PR] Error de red al guardar:', err);
+      toast('⚠️ Sin conexión con Sheets (guardado solo local)','err');
+    });
 }
 
 async function cargarPedidosRapidos(){
@@ -3414,10 +3443,19 @@ function prEliminar(id){
   const pr=_pedidosRapidos.find(function(p){return p.id===id;});
   if(!pr) return;
   if(!confirm('¿Eliminar este pedido?\n\n'+pr.desc)) return;
+  // 1. Quitar del array local
   _pedidosRapidos=_pedidosRapidos.filter(function(p){return p.id!==id;});
-  guardarPedidosRapidosSheet();
+  // 2. Guardar array actualizado en localStorage (sin el eliminado)
+  localStorage.setItem('tm_pedidos_rapidos', JSON.stringify(_pedidosRapidos));
+  // 3. Borrar fila en Sheets (llamar acción específica de delete)
+  postScript('deletePedidoRapido',{id:id}).catch(function(err){
+    console.error('[PR] Error borrando en Sheets:', err);
+    toast('⚠️ Borrado local, pero Sheets falló','err');
+  });
+  // 4. Re-renderizar
   renderPedidosRapidos();
   cerrarModal('modal-seguimiento');
+  toast('🗑️ Pedido eliminado','ok');
 }
 
 </script>
