@@ -326,17 +326,17 @@ tbody tr:hover td{background:var(--s2)}
       <div class="g2" style="margin-bottom:8px">
         <div class="f mb0">
           <label>Descripción del repuesto</label>
-          <input id="pr-desc" placeholder="Ej: FILTRO ACEITE COROLLA">
+          <input id="pr-desc" placeholder="Ej: FILTRO ACEITE COROLLA" onkeydown="event.stopPropagation();if(event.key==='Enter'){event.preventDefault();guardarPedidoRapido();}">
         </div>
         <div class="f mb0">
           <label>Cantidad</label>
-          <input id="pr-cant" type="number" value="1" min="1" style="width:80px">
+          <input id="pr-cant" type="number" value="1" min="1" style="width:80px" onkeydown="event.stopPropagation()">
         </div>
       </div>
       <div class="g2" style="margin-bottom:10px">
         <div class="f mb0">
           <label>Destino</label>
-          <select id="pr-destino">
+          <select id="pr-destino" onkeydown="event.stopPropagation()">
             <option value="Taller">Taller</option>
             <option value="Taxi">Taxi</option>
             <option value="Plantel">Plantel</option>
@@ -346,7 +346,7 @@ tbody tr:hover td{background:var(--s2)}
         </div>
         <div class="f mb0">
           <label>Referencia (opcional)</label>
-          <input id="pr-ref" placeholder="Ej: Placa, nombre, orden...">
+          <input id="pr-ref" placeholder="Ej: Placa, nombre, orden..." onkeydown="event.stopPropagation();if(event.key==='Enter'){event.preventDefault();guardarPedidoRapido();}">
         </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
