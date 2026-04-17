@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr53'){
+        if(marker !== 'pr54'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr53');
+    localStorage.setItem('tm_sw_version', 'pr54');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604171730-pr53';
+    const VERSION = '202604171830-pr54';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -3059,6 +3059,7 @@ function revertirPedido(idx,tipo){
 let _pedidosRapidos = [];
 let _prPidiendoId = null;     // id del pedido rápido que está abriendo modal-pedir
 let _prDetalleId  = null;     // id del pedido rápido abierto en modal-seguimiento
+let _prEliminandoId = null;   // id en proceso de eliminación (bloquea cargas concurrentes)
 
 function mostrarFormPedidoRapido(){
   document.getElementById('form-ped-rapido').style.display='block';
@@ -3132,6 +3133,11 @@ function guardarPedidosRapidosSheet(){
 }
 
 async function cargarPedidosRapidos(){
+  // Si hay un delete en vuelo, no recargar (evita condición de carrera)
+  if(_prEliminandoId){
+    console.log('[PR] Carga ignorada: hay delete en vuelo ('+_prEliminandoId+')');
+    return;
+  }
   // Cargar local primero
   try{
     const local=localStorage.getItem('tm_pedidos_rapidos');
@@ -3142,7 +3148,12 @@ async function cargarPedidosRapidos(){
   try{
     const json=await fetchScript('action=readPedidosRapidos');
     if(json&&json.ok&&json.data){
-      _pedidosRapidos=json.data;
+      // Si durante la carga se inició un delete, filtrar ese id del resultado
+      if(_prEliminandoId){
+        _pedidosRapidos=json.data.filter(function(p){return p.id!==_prEliminandoId;});
+      } else {
+        _pedidosRapidos=json.data;
+      }
       localStorage.setItem('tm_pedidos_rapidos', JSON.stringify(_pedidosRapidos));
       renderPedidosRapidos();
     }
@@ -3439,23 +3450,46 @@ function prDeshacer(id){
   toast('↩️ Estado revertido','ok');
 }
 
-function prEliminar(id){
+async function prEliminar(id){
   const pr=_pedidosRapidos.find(function(p){return p.id===id;});
   if(!pr) return;
   if(!confirm('¿Eliminar este pedido?\n\n'+pr.desc)) return;
-  // 1. Quitar del array local
+
+  console.log('[PR] Eliminando pedido:', id, pr.desc);
+  _prEliminandoId = id;  // bloquear recargas concurrentes sobre este id
+
+  // 1. Quitar del array local INMEDIATAMENTE (UI optimista)
   _pedidosRapidos=_pedidosRapidos.filter(function(p){return p.id!==id;});
-  // 2. Guardar array actualizado en localStorage (sin el eliminado)
   localStorage.setItem('tm_pedidos_rapidos', JSON.stringify(_pedidosRapidos));
-  // 3. Borrar fila en Sheets (llamar acción específica de delete)
-  postScript('deletePedidoRapido',{id:id}).catch(function(err){
-    console.error('[PR] Error borrando en Sheets:', err);
-    toast('⚠️ Borrado local, pero Sheets falló','err');
-  });
-  // 4. Re-renderizar
   renderPedidosRapidos();
   cerrarModal('modal-seguimiento');
-  toast('🗑️ Pedido eliminado','ok');
+  toast('⏳ Eliminando...','ok');
+
+  // 2. Borrar en Sheets — ESPERANDO a que termine, con reintentos (igual que deletePF)
+  let exito=false;
+  for(let i=1;i<=3;i++){
+    try{
+      const r=await postScript('deletePedidoRapido',{id:id});
+      if(r&&r.ok){ exito=true; break; }
+      console.warn('[PR] Intento '+i+' falló:', r);
+    }catch(e){
+      console.error('[PR] Error intento '+i+':',e);
+    }
+    if(i<3) await new Promise(res=>setTimeout(res,1000*i));
+  }
+
+  if(exito){
+    console.log('[PR] Borrado en Sheets OK');
+    toast('🗑️ Pedido eliminado','ok');
+  } else {
+    console.error('[PR] No se pudo borrar en Sheets después de 3 intentos');
+    toast('⚠️ Error eliminando en Sheets — puede volver al sincronizar','err');
+    // Re-agregar al array local para que quede consistente con Sheets
+    _pedidosRapidos.unshift(pr);
+    localStorage.setItem('tm_pedidos_rapidos', JSON.stringify(_pedidosRapidos));
+    renderPedidosRapidos();
+  }
+  _prEliminandoId = null;  // liberar bloqueo
 }
 
 </script>
