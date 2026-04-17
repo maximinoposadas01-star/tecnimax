@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr60'){
+        if(marker !== 'pr70'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr60');
+    localStorage.setItem('tm_sw_version', 'pr70');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604172230-pr60';
+    const VERSION = '202604180000-pr70';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -843,6 +843,9 @@ async function sincronizarTodo(silencioso=false){
     await loadPFfromSheet();
     await cargarPedidosRapidos();
 
+    // PASO 3: Archivado automático diario (solo si cambió el día)
+    try{ await archivarPendientesDiaAnterior(); }catch(e){ console.warn('[auto-archivo] error:',e); }
+
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
     if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604161735';
@@ -942,7 +945,13 @@ function goPage(id){
   document.getElementById('page-'+id).classList.add('on');
   ['dash','nueva','hist','stats','imp'].forEach((n,i)=>{ if(n===id) document.querySelectorAll('.tab')[i].classList.add('on'); });
   if(id==='hist'){ loadPFfromSheet().then(()=>renderHist()); }
-  if(id==='dash'){ loadPFfromSheet().then(()=>{ renderDash(); updStats(); }); }
+  if(id==='dash'){
+    loadPFfromSheet().then(async ()=>{
+      await archivarPendientesDiaAnterior();
+      renderDash();
+      updStats();
+    });
+  }
   if(id==='imp'){ updDBstats(); cargarConfig(); }
   if(id==='stats'){ verStats('7d'); }
   if(id==='nueva'&&!pfActual.editMode) initPF();
@@ -1500,8 +1509,8 @@ async function imprimirPF(){
 // ══════════════════════════════════════════
 function recuperarPF(id){
   const pf=proformas.find(p=>p.id===id); if(!pf) return;
-  // Si estaba archivada, volver a pendiente
-  if(pf.estado==='hist') { pf.estado='pend'; savePF(); }
+  // Si estaba archivada (hist o archivada_pend), volver a pendiente
+  if(pf.estado==='hist'||pf.estado==='archivada_pend') { pf.estado='pend'; delete pf.fecha_archivada; savePF(); }
   document.getElementById('sug-placa').style.display='none';
   pfActual={id:pf.id,editMode:true,prods:[...pf.prods],servs:[...pf.servs]};
   document.getElementById('cli-nom').value   =pf.cli.nom||'';
@@ -1562,12 +1571,18 @@ function renderSub(cid,list,isPend){
   let rows='';
   list.forEach(function(p){
     const esAut=p.estado==='autorizado';
-    const badge=esAut?'bd bdgr':'bd bdg';
-    const rowBg=esAut?'background:rgba(22,163,74,.04)':'';
+    const esArch=p.estado==='archivada_pend';
+    const badge=esAut?'bd bdgr':(esArch?'bd':'bd bdg');
+    const rowBg=esAut?'background:rgba(22,163,74,.04)':(esArch?'background:rgba(148,163,184,.05);opacity:.85':'');
     const veh=[p.veh.ma,p.veh.mo,p.veh.a].filter(Boolean).join(' ')||'—';
     const mon=(p.moneda==='USD'?'$':'L')+' '+fmt(p.total);
-    const autLabel=esAut?'<span style="font-size:10px;color:var(--gr);font-weight:700"> ✓</span>':'';
-    const autBtn=esAut?'':'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>';
+    const autLabel=esAut
+      ?'<span style="font-size:10px;color:var(--gr);font-weight:700"> ✓</span>'
+      :(esArch?'<span style="font-size:10px;color:var(--mu);font-weight:600"> 📦 Archivada</span>':'');
+    const autBtn=esAut?''
+      :(esArch
+        ?'<button class="btn bg bsm" onclick="reactivarPF(\''+p.id+'\')" title="Volver al Inicio">↩️ Reactivar</button>'
+        :'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>');
     // Progreso de seguimiento
     let segProgreso='';
     if(esAut){
@@ -1605,10 +1620,6 @@ function renderSub(cid,list,isPend){
 }
 
 
-function archivarPF(id){
-  const pf=proformas.find(p=>p.id===id);
-  if(pf){ pf.estado='hist'; savePF(); updStats(); renderHist(); syncPFtoSheet(pf); toast('Cotización archivada','ok'); }
-}
 function editarAutorizada(id){
   const pf=proformas.find(p=>p.id===id);
   if(!pf) return;
@@ -1698,6 +1709,7 @@ function renderDash(){
     const accion=esAut
       ?'<button class="btn bgh bsm" onclick="finalizarPF(\''+p.id+'\')" style="color:var(--gr);border-color:var(--gr)">Finalizar</button>'
       :'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>';
+    const btnArchivar=esAut?'':' <button class="btn bgh bsm" onclick="archivarPF(\''+p.id+'\')" title="Archivar (pasa a Cotización)">📦</button>';
     // Progreso de seguimiento en dashboard
     let segProgresoD='';
     if(esAut){
@@ -1723,6 +1735,7 @@ function renderDash(){
       +'<td>'+(p.veh.placa||'—')+'</td>'
       +'<td style="color:var(--gold);font-weight:700;white-space:nowrap">'+mon+'</td>'
       +'<td><div class="flex" style="gap:4px">'+accion
+      +btnArchivar
       +' <button class="btn bgh bsm" onclick="recuperarPF(\''+p.id+'\');goPage(\'nueva\')">✏</button>'
       +' <button class="btn bg bsm" onclick="pdfDeLista(\''+p.id+'\')">📄</button>'
       +'</div></td>'
@@ -2716,6 +2729,84 @@ function finalizarPF(id){
   updStats();
   renderDash();
   toast('Proforma N° '+pf.num+' finalizada','ok');
+}
+
+// Archivar una proforma pendiente (pasa a Cotización como archivada_pend)
+function archivarPF(id){
+  const pf=proformas.find(function(p){return p.id===id;});
+  if(!pf) return;
+  if(pf.estado!=='pend') return;  // solo pendientes
+  if(!confirm('¿Archivar proforma N° '+pf.num+'?\nSe quitará del Inicio pero quedará en Cotización.\nSi el cliente vuelve, puedes reactivarla.')) return;
+  pf.estado='archivada_pend';
+  pf.fecha_archivada=new Date().toISOString();
+  savePF();
+  syncPFtoSheet(pf);
+  updStats();
+  renderDash();
+  toast('📦 Proforma N° '+pf.num+' archivada','ok');
+}
+
+// Reactivar una proforma archivada sin autorizar (vuelve al Inicio como pendiente)
+function reactivarPF(id){
+  const pf=proformas.find(function(p){return p.id===id;});
+  if(!pf) return;
+  if(pf.estado!=='archivada_pend') return;
+  if(!confirm('¿Reactivar proforma N° '+pf.num+'?\nVolverá al Inicio como pendiente.')) return;
+  pf.estado='pend';
+  // Actualizar fecha a hoy para que aparezca en el inicio
+  const ahora=new Date();
+  const yyyy=ahora.getFullYear();
+  const mm=String(ahora.getMonth()+1).padStart(2,'0');
+  const dd=String(ahora.getDate()).padStart(2,'0');
+  const hh=String(ahora.getHours()).padStart(2,'0');
+  const mi=String(ahora.getMinutes()).padStart(2,'0');
+  pf.fecha=yyyy+'-'+mm+'-'+dd+' '+hh+':'+mi;
+  delete pf.fecha_archivada;
+  savePF();
+  syncPFtoSheet(pf);
+  updStats();
+  renderHist();
+  toast('↩️ Proforma N° '+pf.num+' reactivada — revisa Inicio','ok');
+}
+
+// Archivado automático diario: al abrir un nuevo día, mueve a 'archivada_pend'
+// todas las proformas pendientes de días anteriores (las autorizadas NO se tocan).
+async function archivarPendientesDiaAnterior(){
+  const hoy=new Date().toISOString().slice(0,10);
+  const ultimoDia=localStorage.getItem('tm_ultimo_archivado')||'';
+  if(ultimoDia===hoy) return;  // ya se archivó hoy
+
+  // Buscar pendientes que NO son de hoy
+  const aArchivar=proformas.filter(function(p){
+    if(p.estado!=='pend') return false;
+    const fechaPF=p.fecha?String(p.fecha).slice(0,10):'';
+    return fechaPF && fechaPF < hoy;
+  });
+
+  if(!aArchivar.length){
+    localStorage.setItem('tm_ultimo_archivado', hoy);
+    return;
+  }
+
+  console.log('[auto-archivo] Archivando '+aArchivar.length+' proforma(s) pendiente(s) del/los día(s) anterior(es)');
+  const tsArchivado=new Date().toISOString();
+  aArchivar.forEach(function(pf){
+    pf.estado='archivada_pend';
+    pf.fecha_archivada=tsArchivado;
+  });
+  savePF();
+
+  // Sincronizar cada una en background (sin bloquear)
+  for(let i=0; i<aArchivar.length; i++){
+    try{ await syncPFtoSheet(aArchivar[i]); }catch(e){}
+    // Pequeña pausa para no saturar
+    if(i<aArchivar.length-1) await new Promise(r=>setTimeout(r,200));
+  }
+
+  localStorage.setItem('tm_ultimo_archivado', hoy);
+  updStats();
+  if(document.getElementById('page-dash').classList.contains('on')) renderDash();
+  if(aArchivar.length>0) toast('📦 '+aArchivar.length+' proforma(s) archivada(s) automáticamente','ok');
 }
 
 
