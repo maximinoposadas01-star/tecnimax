@@ -30,8 +30,17 @@ document.head.appendChild(link);
 
 // Service Worker inline
 if('serviceWorker' in navigator){
+  // Primero: desregistrar cualquier SW viejo para forzar actualización
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(reg => {
+      if(reg.active && reg.active.scriptURL && reg.active.scriptURL.indexOf('202604') !== -1){
+        reg.unregister();
+      }
+    });
+  }).catch(()=>{});
+  
   const swCode = `
-    const VERSION = '202604161735';
+    const VERSION = '202604171600-pr52';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -319,7 +328,7 @@ tbody tr:hover td{background:var(--s2)}
   <div class="card" style="margin-top:14px">
     <div class="chead">
       <div class="ctitle">Pedidos Rápidos <span id="pr-contador" style="font-size:11px;color:var(--mu);font-weight:normal;margin-left:8px"></span></div>
-      <button class="btn bg bsm" onclick="mostrarFormPedidoRapido()">＋ Agregar</button>
+      <button class="btn bg bsm" id="pr-btn-agregar" data-action="mostrarPR">＋ Agregar</button>
     </div>
     <!-- Formulario rápido -->
     <div id="form-ped-rapido" style="display:none;background:var(--s2);border-radius:var(--r);padding:12px;margin-bottom:12px" onclick="event.stopPropagation()">
@@ -352,8 +361,8 @@ tbody tr:hover td{background:var(--s2)}
             style="width:100%">
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn bg bsm" onclick="guardarPedidoRapido()">✓ Guardar</button>
-          <button class="btn bgh bsm" onclick="ocultarFormPedidoRapido()">✕</button>
+          <button class="btn bg bsm" data-action="guardarPR">✓ Guardar</button>
+          <button class="btn bgh bsm" data-action="ocultarPR">✕</button>
         </div>
       </div>
     </div>
@@ -1962,6 +1971,18 @@ document.addEventListener('click', function(e) {
       break;
     }
     case 'ganStop': e.stopPropagation(); break;
+    // === Pedidos Rápidos v5.2 ===
+    case 'mostrarPR':       mostrarFormPedidoRapido(); break;
+    case 'ocultarPR':       ocultarFormPedidoRapido(); break;
+    case 'guardarPR':       guardarPedidoRapido(); break;
+    case 'togglePREnt':     togglePREntregados(); break;
+    case 'abrirDetallePR':  abrirDetallePR(arg); break;
+    case 'prPedir':         prPedir(arg); break;
+    case 'prBodega':        prBodega(arg); break;
+    case 'prLlego':         prLlego(arg); break;
+    case 'prEntregar':      prEntregar(arg); break;
+    case 'prDeshacer':      prDeshacer(arg); break;
+    case 'prEliminar':      prEliminar(arg); break;
   }
 });
 
@@ -3140,7 +3161,7 @@ function renderPedidosRapidos(){
 
   // Entregados colapsados (se archivarán en 24h)
   if(entregados.length){
-    html+='<div style="margin-top:8px;font-size:11px;color:var(--mu);cursor:pointer" onclick="togglePREntregados()">'
+    html+='<div style="margin-top:8px;font-size:11px;color:var(--mu);cursor:pointer" data-action="togglePREnt">'
       +'<span id="pr-entregados-toggle">▶ Ver '+entregados.length+' entregado'+(entregados.length!==1?'s':'')+' (se archivan en 24h)</span></div>'
       +'<div id="pr-entregados-list" style="display:none">';
     entregados.forEach(function(pr){
@@ -3185,7 +3206,7 @@ function _prRowHtml(pr){
     opacity='opacity:.7;';
   }
 
-  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1);cursor:pointer;'+opacity+'" onclick="abrirDetallePR(\''+pr.id+'\')">'
+  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1);cursor:pointer;'+opacity+'" data-action="abrirDetallePR" data-arg="'+pr.id+'">'
     +'<div style="flex:1;min-width:0">'
     +'<div style="font-size:13px;font-weight:600">'+pr.desc+'</div>'
     +'<div style="font-size:11px;color:var(--mu)">'+cantTxt+vehTxt+pedidoPorTxt+vendTxt+fechaTxt+'</div>'
@@ -3250,19 +3271,19 @@ function abrirDetallePR(id){
   // Acciones según estado
   html+='<div style="display:flex;flex-direction:column;gap:8px">';
   if(pr.estado==='pendiente'){
-    html+='<button class="btn bg" onclick="prPedir(\''+pr.id+'\')" style="width:100%">📦 Marcar como Pedido (con proveedor)</button>';
-    html+='<button class="btn" onclick="prBodega(\''+pr.id+'\')" style="width:100%;background:#7c3aed;color:#fff;border:0">🏪 Tomar de Bodega</button>';
+    html+='<button class="btn bg" data-action="prPedir" data-arg="'+pr.id+'" style="width:100%">📦 Marcar como Pedido (con proveedor)</button>';
+    html+='<button class="btn" data-action="prBodega" data-arg="'+pr.id+'" style="width:100%;background:#7c3aed;color:#fff;border:0">🏪 Tomar de Bodega</button>';
   } else if(pr.estado==='pedido'){
-    html+='<button class="btn bg" onclick="prLlego(\''+pr.id+'\')" style="width:100%">✅ Marcar como Llegó</button>';
-    html+='<button class="btn bgh" onclick="prDeshacer(\''+pr.id+'\')" style="width:100%">↩️ Deshacer (volver a Pendiente)</button>';
+    html+='<button class="btn bg" data-action="prLlego" data-arg="'+pr.id+'" style="width:100%">✅ Marcar como Llegó</button>';
+    html+='<button class="btn bgh" data-action="prDeshacer" data-arg="'+pr.id+'" style="width:100%">↩️ Deshacer (volver a Pendiente)</button>';
   } else if(pr.estado==='llegado'){
-    html+='<button class="btn bg" onclick="prEntregar(\''+pr.id+'\')" style="width:100%">🤝 Marcar como Entregado</button>';
-    html+='<button class="btn bgh" onclick="prDeshacer(\''+pr.id+'\')" style="width:100%">↩️ Deshacer (volver a Pedido)</button>';
+    html+='<button class="btn bg" data-action="prEntregar" data-arg="'+pr.id+'" style="width:100%">🤝 Marcar como Entregado</button>';
+    html+='<button class="btn bgh" data-action="prDeshacer" data-arg="'+pr.id+'" style="width:100%">↩️ Deshacer (volver a Pedido)</button>';
   } else if(pr.estado==='entregado'){
     html+='<div style="background:#ecfdf5;padding:10px;border-radius:var(--r);text-align:center;color:#065f46;font-size:12px">Se archivará automáticamente en 24h</div>';
-    html+='<button class="btn bgh" onclick="prDeshacer(\''+pr.id+'\')" style="width:100%">↩️ Deshacer (volver a Llegó)</button>';
+    html+='<button class="btn bgh" data-action="prDeshacer" data-arg="'+pr.id+'" style="width:100%">↩️ Deshacer (volver a Llegó)</button>';
   }
-  html+='<button class="btn br" onclick="prEliminar(\''+pr.id+'\')" style="width:100%;margin-top:8px">🗑️ Eliminar pedido</button>';
+  html+='<button class="btn br" data-action="prEliminar" data-arg="'+pr.id+'" style="width:100%;margin-top:8px">🗑️ Eliminar pedido</button>';
   html+='</div>';
 
   content.innerHTML=html;
