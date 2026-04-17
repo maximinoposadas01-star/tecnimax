@@ -314,6 +314,49 @@ tbody tr:hover td{background:var(--s2)}
     <div class="ctitle">Proformas Pendientes</div>
     <div id="dash-list"><div class="empty">Sin proformas pendientes</div></div>
   </div>
+
+  <!-- Pedidos Rápidos -->
+  <div class="card" style="margin-top:14px">
+    <div class="chead">
+      <div class="ctitle">Pedidos Rápidos</div>
+      <button class="btn bg bsm" onclick="mostrarFormPedidoRapido()">＋ Agregar</button>
+    </div>
+    <!-- Formulario (oculto por defecto) -->
+    <div id="form-ped-rapido" style="display:none;background:var(--s2);border-radius:var(--r);padding:14px;margin-bottom:14px">
+      <div class="g2" style="margin-bottom:8px">
+        <div class="f mb0">
+          <label>Descripción del repuesto</label>
+          <input id="pr-desc" placeholder="Ej: FILTRO ACEITE COROLLA">
+        </div>
+        <div class="f mb0">
+          <label>Cantidad</label>
+          <input id="pr-cant" type="number" value="1" min="1" style="width:80px">
+        </div>
+      </div>
+      <div class="g2" style="margin-bottom:10px">
+        <div class="f mb0">
+          <label>Destino</label>
+          <select id="pr-destino">
+            <option value="Taller">Taller</option>
+            <option value="Taxi">Taxi</option>
+            <option value="Plantel">Plantel</option>
+            <option value="Cliente">Cliente</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </div>
+        <div class="f mb0">
+          <label>Referencia (opcional)</label>
+          <input id="pr-ref" placeholder="Ej: Placa, nombre, orden...">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn bgh bsm" onclick="ocultarFormPedidoRapido()">Cancelar</button>
+        <button class="btn bg bsm" onclick="guardarPedidoRapido()">✓ Guardar pedido</button>
+      </div>
+    </div>
+    <!-- Lista -->
+    <div id="pr-lista"><div class="empty">Sin pedidos rápidos</div></div>
+  </div>
 </div>
 
 <!-- ═══ NUEVA PROFORMA ═══ -->
@@ -757,6 +800,7 @@ async function sincronizarTodo(silencioso=false){
     }
     // PASO 2: Bajar todo desde Sheets (incluye las de otras PCs)
     await loadPFfromSheet();
+    await cargarPedidosRapidos();
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
@@ -2426,7 +2470,10 @@ try{ updStats(); }catch(e){ console.error("updStats error:",e); }
 try{ cargarConfig(); }catch(e){ console.error("cargarConfig error:",e); }
 try{ initComprasInfo(); }catch(e){ console.error("initComprasInfo error:",e); }
 // Cargar vendedor guardado en esta PC (esperar DOM listo)
-document.addEventListener('DOMContentLoaded', function(){ try{ cargarVendedorLocal(); }catch(e){ console.error('vendedor error',e); } });
+document.addEventListener('DOMContentLoaded', function(){
+  try{ cargarVendedorLocal(); }catch(e){ console.error('vendedor error',e); }
+  try{ cargarPedidosRapidos(); }catch(e){}
+});
 
 // Sincronizar al volver a la pestaña o ventana
 let _lastAutoSync=0;
@@ -2970,6 +3017,219 @@ function revertirPedido(idx,tipo){
   syncPFtoSheet(pf);
   renderSeguimiento(pf);
   _actualizarVistas();
+}
+
+
+// ══════════════════════════════════════════
+//  PEDIDOS RÁPIDOS
+// ══════════════════════════════════════════
+let _pedidosRapidos = [];
+
+function mostrarFormPedidoRapido(){
+  document.getElementById('form-ped-rapido').style.display='block';
+  document.getElementById('pr-desc').focus();
+}
+function ocultarFormPedidoRapido(){
+  document.getElementById('form-ped-rapido').style.display='none';
+  document.getElementById('pr-desc').value='';
+  document.getElementById('pr-cant').value='1';
+  document.getElementById('pr-ref').value='';
+}
+
+function guardarPedidoRapido(){
+  const desc=document.getElementById('pr-desc').value.trim();
+  if(!desc){ toast('Escribe la descripción del repuesto','err'); return; }
+  const cant=parseInt(document.getElementById('pr-cant').value)||1;
+  const destino=document.getElementById('pr-destino').value;
+  const ref=document.getElementById('pr-ref').value.trim();
+  const vendedor=localStorage.getItem('tm_vendedor_nombre')||'';
+  const pr={
+    id: Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+    desc: desc.toUpperCase(),
+    cant: cant,
+    destino: destino,
+    ref: ref,
+    vendedor: vendedor,
+    fecha: new Date().toISOString(),
+    estado: 'pendiente',
+    proveedor: '',
+    fecha_pedido: '',
+    fecha_llegada: ''
+  };
+  _pedidosRapidos.unshift(pr);
+  guardarPedidosRapidosSheet();
+  renderPedidosRapidos();
+  ocultarFormPedidoRapido();
+  toast('Pedido agregado','ok');
+}
+
+function guardarPedidosRapidosSheet(){
+  postScript('savePedidosRapidos',{pedidos:_pedidosRapidos}).catch(function(){});
+  localStorage.setItem('tm_pedidos_rapidos', JSON.stringify(_pedidosRapidos));
+}
+
+async function cargarPedidosRapidos(){
+  // Cargar local primero
+  try{
+    const local=localStorage.getItem('tm_pedidos_rapidos');
+    if(local) _pedidosRapidos=JSON.parse(local);
+  }catch(e){}
+  renderPedidosRapidos();
+  // Luego sincronizar con Sheets
+  try{
+    const json=await fetchScript('action=readPedidosRapidos');
+    if(json&&json.ok&&json.data&&json.data.length){
+      _pedidosRapidos=json.data;
+      localStorage.setItem('tm_pedidos_rapidos', JSON.stringify(_pedidosRapidos));
+      renderPedidosRapidos();
+    }
+  }catch(e){}
+}
+
+function renderPedidosRapidos(){
+  const cont=document.getElementById('pr-lista');
+  if(!cont) return;
+  // Solo mostrar los que no han llegado
+  const activos=_pedidosRapidos.filter(function(p){ return p.estado!=='llegado'; });
+  const llegados=_pedidosRapidos.filter(function(p){ return p.estado==='llegado'; });
+  if(!activos.length&&!llegados.length){
+    cont.innerHTML='<div class="empty">Sin pedidos rápidos</div>'; return;
+  }
+  let html='';
+  // Activos
+  activos.forEach(function(pr){
+    const ahora=new Date();
+    const vend=pr.vendedor?pr.vendedor.trim().split(/\s+/).map(function(w){return w.charAt(0).toUpperCase();}).join(''):'';
+    const destinoColor=pr.destino==='Taller'?'#7c3aed':pr.destino==='Taxi'?'#0284c7':pr.destino==='Plantel'?'#b45309':'var(--mu)';
+    let estadoHTML='';
+    let infoHTML='';
+    if(pr.estado==='pendiente'){
+      estadoHTML='<button class="btn bg bxs" onclick="prPedir(\''+pr.id+'\')" style="font-size:12px">📦 Pedir</button>'
+        +'<button class="btn bxs" onclick="prBodega(\''+pr.id+'\')" style="margin-left:4px;background:#7c3aed;color:#fff;border:0;font-size:12px">🏪 Bodega</button>'
+        +'<button class="btn br bxs" onclick="prEliminar(\''+pr.id+'\')" style="margin-left:4px;font-size:11px">✕</button>';
+    } else if(pr.estado==='pedido'){
+      const diffMin=pr.fecha_pedido?Math.floor((ahora-new Date(pr.fecha_pedido))/60000):0;
+      infoHTML='<div style="font-size:10px;color:var(--mu);margin-top:2px">'+pr.proveedor+' · '+formatFechaHora(pr.fecha_pedido)+' <span style="color:#f59e0b;font-weight:600">('+formatTiempo(diffMin)+')</span></div>';
+      estadoHTML='<span style="font-size:13px">📦</span> <span style="color:#f59e0b;font-weight:700;font-size:12px">En pedido</span>'
+        +' <button class="btn bxs" onclick="prLlego(\''+pr.id+'\')" style="margin-left:6px;background:var(--gr);color:#fff;border:0;font-size:12px">✅ Llegó</button>'
+        +'<button class="btn br bxs" onclick="prEliminar(\''+pr.id+'\')" style="margin-left:4px;font-size:11px">✕</button>';
+    }
+    html+='<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)">'
+      +'<div style="flex:1">'
+      +'<div style="font-size:13px;font-weight:600">'+pr.desc+'</div>'
+      +'<div style="font-size:11px;color:var(--mu)">Cant: '+pr.cant
+        +' · <span style="color:'+destinoColor+';font-weight:600">'+pr.destino+'</span>'
+        +(pr.ref?' · '+pr.ref:'')
+        +(vend?' · '+vend:'')
+        +' · '+formatFechaHora(pr.fecha)
+      +'</div>'
+      +infoHTML
+      +'</div>'
+      +'<div style="text-align:right;white-space:nowrap">'+estadoHTML+'</div>'
+      +'</div>';
+  });
+  // Llegados (colapsados)
+  if(llegados.length){
+    html+='<div style="margin-top:8px;font-size:11px;color:var(--mu);cursor:pointer" onclick="togglePRLlegados()">'
+      +'<span id="pr-llegados-toggle">▶ Ver '+llegados.length+' llegado'+(llegados.length!==1?'s':'')+'</span></div>'
+      +'<div id="pr-llegados-list" style="display:none">';
+    llegados.forEach(function(pr){
+      const diffMin=(pr.fecha_pedido&&pr.fecha_llegada)?Math.floor((new Date(pr.fecha_llegada)-new Date(pr.fecha_pedido))/60000):0;
+      html+='<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--b1);opacity:.7">'
+        +'<div style="flex:1">'
+        +'<div style="font-size:12px;font-weight:600;text-decoration:line-through;color:var(--mu)">'+pr.desc+'</div>'
+        +'<div style="font-size:10px;color:var(--mu)">'+pr.destino+(pr.ref?' · '+pr.ref:'')+(pr.proveedor?' · '+pr.proveedor:'')+(diffMin?' · Tardó '+formatTiempo(diffMin):'')+'</div>'
+        +'</div>'
+        +'<span style="font-size:13px">✅</span>'
+        +'<button class="btn br bxs" onclick="prEliminar(\''+pr.id+'\')" style="font-size:11px">✕</button>'
+        +'</div>';
+    });
+    html+='</div>';
+  }
+  cont.innerHTML=html;
+}
+
+function togglePRLlegados(){
+  const list=document.getElementById('pr-llegados-list');
+  const toggle=document.getElementById('pr-llegados-toggle');
+  if(!list||!toggle) return;
+  if(list.style.display==='none'){
+    list.style.display='block';
+    toggle.textContent=toggle.textContent.replace('▶','▼');
+  } else {
+    list.style.display='none';
+    toggle.textContent=toggle.textContent.replace('▼','▶');
+  }
+}
+
+let _prPidiendoId=null;
+
+function prPedir(id){
+  _prPidiendoId=id;
+  // Reusar el modal de pedir
+  _segPfId=null; _segProdIdx=null;
+  const provSet={};
+  Object.values(DBcompras).forEach(function(entradas){
+    if(Array.isArray(entradas)) entradas.forEach(function(e){ if(e&&e.p) provSet[e.p.trim().toUpperCase()]=true; });
+  });
+  _proveedores.forEach(function(p){ provSet[p.toUpperCase()]=true; });
+  _provListCache=Object.keys(provSet).sort();
+  const inp=document.getElementById('pedir-prov-input');
+  inp.value='';
+  document.getElementById('pedir-prov-lista').style.display='none';
+  document.getElementById('modal-pedir').classList.add('on');
+  setTimeout(function(){ inp.focus(); },100);
+}
+
+// Override confirmarPedido para manejar pedidos rápidos también
+const _confirmarPedidoOriginal = confirmarPedido;
+confirmarPedido = function(){
+  if(_prPidiendoId){
+    const prov=document.getElementById('pedir-prov-input').value.trim();
+    if(!prov){ toast('Selecciona o escribe un proveedor','err'); return; }
+    const pr=_pedidosRapidos.find(function(p){return p.id===_prPidiendoId;});
+    if(pr){
+      pr.estado='pedido';
+      pr.proveedor=prov.toUpperCase();
+      pr.fecha_pedido=new Date().toISOString();
+      guardarPedidosRapidosSheet();
+      renderPedidosRapidos();
+    }
+    _prPidiendoId=null;
+    cerrarModal('modal-pedir');
+    toast('📦 Pedido a '+prov,'ok');
+  } else {
+    _confirmarPedidoOriginal();
+  }
+};
+
+function prBodega(id){
+  const pr=_pedidosRapidos.find(function(p){return p.id===id;});
+  if(!pr) return;
+  pr.estado='llegado';
+  pr.proveedor='BODEGA';
+  pr.fecha_pedido=new Date().toISOString();
+  pr.fecha_llegada=new Date().toISOString();
+  guardarPedidosRapidosSheet();
+  renderPedidosRapidos();
+  toast('🏪 Tomado de bodega','ok');
+}
+
+function prLlego(id){
+  const pr=_pedidosRapidos.find(function(p){return p.id===id;});
+  if(!pr) return;
+  pr.estado='llegado';
+  pr.fecha_llegada=new Date().toISOString();
+  guardarPedidosRapidosSheet();
+  renderPedidosRapidos();
+  toast('✅ Repuesto llegó','ok');
+}
+
+function prEliminar(id){
+  if(!confirm('¿Eliminar este pedido?')) return;
+  _pedidosRapidos=_pedidosRapidos.filter(function(p){return p.id!==id;});
+  guardarPedidosRapidosSheet();
+  renderPedidosRapidos();
 }
 
 </script>
