@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr54'){
+        if(marker !== 'pr55'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr54');
+    localStorage.setItem('tm_sw_version', 'pr55');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604171830-pr54';
+    const VERSION = '202604171930-pr55';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -337,7 +337,7 @@ tbody tr:hover td{background:var(--s2)}
       <button class="btn bg bsm" id="pr-btn-agregar" data-action="mostrarPR">＋ Agregar</button>
     </div>
     <!-- Formulario rápido -->
-    <div id="form-ped-rapido" style="display:none;background:var(--s2);border-radius:var(--r);padding:12px;margin-bottom:12px" onclick="event.stopPropagation()">
+    <div id="form-ped-rapido" style="display:none;background:var(--s2);border-radius:var(--r);padding:12px;margin-bottom:12px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
         <div style="flex:2;min-width:180px">
           <div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Repuesto</div>
