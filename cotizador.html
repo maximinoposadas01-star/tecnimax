@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr56'){
+        if(marker !== 'pr60'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr56');
+    localStorage.setItem('tm_sw_version', 'pr60');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604172030-pr56';
+    const VERSION = '202604172230-pr60';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -872,10 +872,37 @@ async function fetchScript(params){
   return null;
 }
 
-// Helper para ESCRIBIR a Sheets via GET (POST no-cors falla por redirect 302)
+// Helper para ESCRIBIR a Sheets.
+// Estrategia híbrida: GET si cabe en URL (<7KB de payload), POST si es más grande.
+// POST se envía con Content-Type text/plain para evitar preflight CORS.
 async function postScript(action, data){
-  const payload=encodeURIComponent(JSON.stringify(data));
-  return await fetchScript('action='+action+'&data='+payload);
+  const jsonStr = JSON.stringify(data);
+  const payloadEncoded = encodeURIComponent(jsonStr);
+
+  // Umbral seguro: 7000 chars de data encoded → URL total queda por debajo de 8KB
+  // (hay otros chars: la URL base, '?action=...&data=', etc.)
+  if (payloadEncoded.length < 7000) {
+    return await fetchScript('action='+action+'&data='+payloadEncoded);
+  }
+
+  // POST con body grande (sin límite práctico)
+  try {
+    const body = JSON.stringify({ action: action, data: jsonStr });
+    const resp = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'cors',
+      redirect: 'follow',
+      // text/plain evita el preflight CORS que bloquearía el request
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: body
+    });
+    if (resp.ok) return await resp.json();
+    console.error('[postScript POST] HTTP '+resp.status, action);
+    return null;
+  } catch(e) {
+    console.error('[postScript POST] error', action, e);
+    return null;
+  }
 }
 
 async function loadPFfromSheet(){
