@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr55'){
+        if(marker !== 'pr56'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr55');
+    localStorage.setItem('tm_sw_version', 'pr56');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604171930-pr55';
+    const VERSION = '202604172030-pr56';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -758,28 +758,59 @@ async function syncPFtoSheet(pf){
   toast('⚠️ Error guardando en Sheets — reintenta con Sincronizar','err');
   return false;
 }
-// Sincronizar TODAS las proformas a Sheets (en lotes de 10)
+// Sincronizar TODAS las proformas a Sheets (en lotes pequeños para evitar límite de URL)
 async function syncAllPFtoSheet(){
-  const LOTE=10;
   try{
-    for(let i=0;i<proformas.length;i+=LOTE){
-      const lote=proformas.slice(i,i+LOTE);
-      const esUltimo=(i+LOTE>=proformas.length);
-      for(let intento=1;intento<=3;intento++){
-        try{
-          const r=await postScript('saveAllPF',{proformas:lote,nextNum:esUltimo?nextNum:undefined});
-          if(r&&r.ok) break;
-        }catch(e){ if(intento===3) throw e; }
-        await new Promise(r=>setTimeout(r,1000*intento));
-      }
-      if(!esUltimo) await new Promise(r=>setTimeout(r,300));
-    }
+    await _syncPFenLotes(proformas.slice(), true);
     return true;
   }catch(e){
     toast('⚠️ Error sincronizando todas — reintenta con Sincronizar','err');
     return false;
   }
 }
+
+// Helper: sincroniza un array de proformas, auto-reduciendo el lote si falla por tamaño
+async function _syncPFenLotes(pfs, esUltimoGlobal){
+  if(!pfs.length) return;
+  const LOTE_INICIAL=3;  // Empieza con 3 (era 10 y fallaba con proformas grandes)
+
+  let inicio=0;
+  let lote=LOTE_INICIAL;
+  while(inicio<pfs.length){
+    const fin=Math.min(inicio+lote, pfs.length);
+    const slice=pfs.slice(inicio, fin);
+    const esUltimo = esUltimoGlobal && (fin >= pfs.length);
+
+    let exito=false;
+    for(let intento=1;intento<=3;intento++){
+      try{
+        const r=await postScript('saveAllPF',{
+          proformas:slice,
+          nextNum:esUltimo?nextNum:undefined
+        });
+        if(r&&r.ok){ exito=true; break; }
+      }catch(e){
+        console.warn('[sync] Intento '+intento+' falló lote de '+slice.length+':', e);
+      }
+      if(intento<3) await new Promise(r=>setTimeout(r,1000*intento));
+    }
+
+    if(!exito && slice.length>1){
+      // Lote probablemente muy grande — dividir y reintentar
+      console.warn('[sync] Lote de '+slice.length+' falló. Dividiendo...');
+      const mitad=Math.floor(slice.length/2);
+      await _syncPFenLotes(slice.slice(0,mitad), false);
+      await _syncPFenLotes(slice.slice(mitad), esUltimo);
+    } else if(!exito){
+      // Proforma individual que no entra — se salta para no bloquear todo
+      console.error('[sync] Proforma no se pudo subir:', slice[0]&&slice[0].num);
+    }
+
+    inicio=fin;
+    if(inicio<pfs.length) await new Promise(r=>setTimeout(r,300));
+  }
+}
+
 function loadPF(){
   // 1. Cargar backup local inmediatamente
   loadPFfromLocalBackup();
@@ -804,17 +835,9 @@ async function sincronizarTodo(silencioso=false){
   if(status) status.textContent='⏳ Sincronizando...';
 
   try{
-    // PASO 1: Subir todas las locales en LOTES DE 10 (evita límite de URL en GET)
+    // PASO 1: Subir todas las locales (con reducción automática de lote si la URL es muy larga)
     if(proformas.length>0){
-      const LOTE=10;
-      for(let i=0;i<proformas.length;i+=LOTE){
-        const lote=proformas.slice(i,i+LOTE);
-        // nextNum solo en el último lote para no interferir con el conteo
-        const esUltimo=(i+LOTE>=proformas.length);
-        await postScript('saveAllPF',{proformas:lote,nextNum:esUltimo?nextNum:undefined});
-        // Pequeña pausa entre lotes para no saturar el GAS
-        if(!esUltimo) await new Promise(r=>setTimeout(r,300));
-      }
+      await _syncPFenLotes(proformas.slice(), true);
     }
     // PASO 2: Bajar todo desde Sheets (incluye las de otras PCs)
     await loadPFfromSheet();
