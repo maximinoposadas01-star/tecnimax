@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr70'){
+        if(marker !== 'pr71'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr70');
+    localStorage.setItem('tm_sw_version', 'pr71');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604180000-pr70';
+    const VERSION = '202604180030-pr71';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -3358,42 +3358,53 @@ function renderPedidosRapidos(){
 function _prRowHtml(pr){
   const ahora=new Date();
   const vend=_prVendInit(pr.vendedor);
-  const cantTxt='Cant: '+pr.cant;
-  const vehTxt=pr.vehiculo?' · '+pr.vehiculo:'';
-  const pedidoPorTxt=pr.pedido_por?' · <span style="color:#0284c7;font-weight:600">Pide: '+pr.pedido_por+'</span>':'';
-  const vendTxt=vend?' · '+vend:'';
-  const fechaTxt=' · '+formatFechaHora(pr.fecha);
 
+  // Badge compacto según estado
   let badgeHTML='';
-  let infoHTML='';
+  let proveedorInfo='';
+  let tiempoInfo='';
   let opacity='';
 
   if(pr.estado==='pendiente'){
-    badgeHTML='<span style="background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700">🔴 Pendiente</span>';
+    badgeHTML='<span style="background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;white-space:nowrap">🔴 Pendiente</span>';
   } else if(pr.estado==='pedido'){
     const diffMin=pr.fecha_pedido?Math.floor((ahora-new Date(pr.fecha_pedido))/60000):0;
-    const precioTxt=pr.precio>0?' · L '+Number(pr.precio).toFixed(2):'';
-    infoHTML='<div style="font-size:10px;color:var(--gr);margin-top:2px;font-weight:600">🏪 '+pr.proveedor+precioTxt+' · '+formatFechaHora(pr.fecha_pedido)+' <span style="color:#f59e0b">('+formatTiempo(diffMin)+')</span></div>';
-    badgeHTML='<span style="background:#fed7aa;color:#9a3412;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700">🟡 En pedido</span>';
+    const precioTxt=pr.precio>0?' L'+Number(pr.precio).toFixed(0):'';
+    proveedorInfo=' · <span style="color:var(--gr);font-weight:600">🏪 '+pr.proveedor+precioTxt+'</span>';
+    tiempoInfo=' <span style="color:#f59e0b;font-weight:600">('+formatTiempo(diffMin)+')</span>';
+    badgeHTML='<span style="background:#fed7aa;color:#9a3412;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;white-space:nowrap">🟡 En pedido</span>';
   } else if(pr.estado==='llegado'){
     const diffMin=(pr.fecha_pedido&&pr.fecha_llegada)?Math.floor((new Date(pr.fecha_llegada)-new Date(pr.fecha_pedido))/60000):0;
-    const precioTxt=pr.precio>0?' · L '+Number(pr.precio).toFixed(2):'';
-    infoHTML='<div style="font-size:10px;color:var(--gr);margin-top:2px;font-weight:600">🏪 '+pr.proveedor+precioTxt+(diffMin?' · Tardó '+formatTiempo(diffMin):'')+'</div>';
-    badgeHTML='<span style="background:#bbf7d0;color:#166534;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700">🟢 Llegó</span>';
+    const precioTxt=pr.precio>0?' L'+Number(pr.precio).toFixed(0):'';
+    proveedorInfo=' · <span style="color:var(--gr);font-weight:600">🏪 '+pr.proveedor+precioTxt+'</span>';
+    if(diffMin) tiempoInfo=' <span style="color:var(--mu)">('+formatTiempo(diffMin)+')</span>';
+    badgeHTML='<span style="background:#bbf7d0;color:#166534;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;white-space:nowrap">🟢 Llegó</span>';
   } else if(pr.estado==='entregado'){
-    const precioTxt=pr.precio>0?' · L '+Number(pr.precio).toFixed(2):'';
-    infoHTML='<div style="font-size:10px;color:var(--mu);margin-top:2px">🏪 '+pr.proveedor+precioTxt+' · Entregado '+formatFechaHora(pr.fecha_entrega)+'</div>';
-    badgeHTML='<span style="background:#e5e7eb;color:#374151;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700">✅ Entregado</span>';
-    opacity='opacity:.7;';
+    const precioTxt=pr.precio>0?' L'+Number(pr.precio).toFixed(0):'';
+    proveedorInfo=' · <span style="color:var(--mu)">🏪 '+pr.proveedor+precioTxt+'</span>';
+    badgeHTML='<span style="background:#e5e7eb;color:#374151;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;white-space:nowrap">✅ Entregado</span>';
+    opacity='opacity:.65;';
   }
 
-  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1);cursor:pointer;'+opacity+'" data-action="abrirDetallePR" data-arg="'+pr.id+'">'
-    +'<div style="flex:1;min-width:0">'
-    +'<div style="font-size:13px;font-weight:600">'+pr.desc+'</div>'
-    +'<div style="font-size:11px;color:var(--mu)">'+cantTxt+vehTxt+pedidoPorTxt+vendTxt+fechaTxt+'</div>'
-    +infoHTML
+  const cantTxt='×'+pr.cant;
+  const vehTxt=pr.vehiculo?' · <span style="color:var(--mu)">'+pr.vehiculo+'</span>':'';
+  const pedidoPorTxt=pr.pedido_por?' · <span style="color:#0284c7;font-weight:600">'+pr.pedido_por+'</span>':'';
+  const vendTxt=vend?' · '+vend:'';
+  const horaTxt=pr.fecha?' · '+formatFechaHora(pr.fecha).split(' ').slice(-1)[0]:'';
+
+  // Todo en UNA línea: descripción + meta + proveedor + tiempo + badge
+  return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--b1);cursor:pointer;font-size:12px;'+opacity+'" data-action="abrirDetallePR" data-arg="'+pr.id+'">'
+    +'<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+    +'<span style="font-weight:700">'+pr.desc+'</span>'
+    +' <span style="color:var(--mu);font-weight:500">'+cantTxt+'</span>'
+    +vehTxt
+    +pedidoPorTxt
+    +vendTxt
+    +horaTxt
+    +proveedorInfo
+    +tiempoInfo
     +'</div>'
-    +'<div style="text-align:right;white-space:nowrap">'+badgeHTML+'</div>'
+    +'<div style="flex-shrink:0">'+badgeHTML+'</div>'
     +'</div>';
 }
 
