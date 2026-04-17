@@ -315,18 +315,18 @@ tbody tr:hover td{background:var(--s2)}
     <div id="dash-list"><div class="empty">Sin proformas pendientes</div></div>
   </div>
 
-  <!-- Pedidos Rápidos -->
+  <!-- Pedidos Rápidos v5.2 -->
   <div class="card" style="margin-top:14px">
     <div class="chead">
-      <div class="ctitle">Pedidos Rápidos</div>
+      <div class="ctitle">Pedidos Rápidos <span id="pr-contador" style="font-size:11px;color:var(--mu);font-weight:normal;margin-left:8px"></span></div>
       <button class="btn bg bsm" onclick="mostrarFormPedidoRapido()">＋ Agregar</button>
     </div>
     <!-- Formulario rápido -->
     <div id="form-ped-rapido" style="display:none;background:var(--s2);border-radius:var(--r);padding:12px;margin-bottom:12px" onclick="event.stopPropagation()">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <div style="flex:2;min-width:160px">
+        <div style="flex:2;min-width:180px">
           <div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Repuesto</div>
-          <input id="pr-desc" placeholder="Descripción del repuesto"
+          <input id="pr-desc" placeholder="Ej: Soporte de motor"
             onkeydown="event.stopPropagation();if(event.key==='Enter'){event.preventDefault();guardarPedidoRapido();}"
             oninput="event.stopPropagation()"
             style="width:100%">
@@ -337,19 +337,16 @@ tbody tr:hover td{background:var(--s2)}
             onkeydown="event.stopPropagation()"
             style="width:100%">
         </div>
-        <div style="width:110px">
-          <div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Destino</div>
-          <select id="pr-destino" onkeydown="event.stopPropagation()" style="width:100%">
-            <option value="Taller">Taller</option>
-            <option value="Taxi">Taxi</option>
-            <option value="Plantel">Plantel</option>
-            <option value="Cliente">Cliente</option>
-            <option value="Otro">Otro</option>
-          </select>
+        <div style="flex:2;min-width:180px">
+          <div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Vehículo (marca/modelo/año)</div>
+          <input id="pr-vehiculo" placeholder="Ej: Toyota Corolla 2015"
+            onkeydown="event.stopPropagation();if(event.key==='Enter'){event.preventDefault();guardarPedidoRapido();}"
+            oninput="event.stopPropagation()"
+            style="width:100%">
         </div>
-        <div style="flex:1;min-width:120px">
-          <div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Referencia</div>
-          <input id="pr-ref" placeholder="Placa, nombre..."
+        <div style="flex:1;min-width:140px">
+          <div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Pedido por</div>
+          <input id="pr-pedidopor" placeholder="Cliente, mecánico..."
             onkeydown="event.stopPropagation();if(event.key==='Enter'){event.preventDefault();guardarPedidoRapido();}"
             oninput="event.stopPropagation()"
             style="width:100%">
@@ -3027,9 +3024,14 @@ function revertirPedido(idx,tipo){
 
 
 // ══════════════════════════════════════════
-//  PEDIDOS RÁPIDOS
+//  PEDIDOS RÁPIDOS v5.2 — Recordatorio de productos
+//  Estados: pendiente → pedido → llegado → entregado
+//  Campos: desc, cant, vehiculo, pedido_por, vendedor,
+//          proveedor, precio, notas
 // ══════════════════════════════════════════
 let _pedidosRapidos = [];
+let _prPidiendoId = null;     // id del pedido rápido que está abriendo modal-pedir
+let _prDetalleId  = null;     // id del pedido rápido abierto en modal-seguimiento
 
 function mostrarFormPedidoRapido(){
   document.getElementById('form-ped-rapido').style.display='block';
@@ -3039,28 +3041,33 @@ function ocultarFormPedidoRapido(){
   document.getElementById('form-ped-rapido').style.display='none';
   document.getElementById('pr-desc').value='';
   document.getElementById('pr-cant').value='1';
-  document.getElementById('pr-ref').value='';
+  document.getElementById('pr-vehiculo').value='';
+  document.getElementById('pr-pedidopor').value='';
 }
 
 function guardarPedidoRapido(){
   const desc=document.getElementById('pr-desc').value.trim();
   if(!desc){ toast('Escribe la descripción del repuesto','err'); return; }
+  const pedidoPor=document.getElementById('pr-pedidopor').value.trim();
+  if(!pedidoPor){ toast('Escribe quién lo pidió','err'); return; }
   const cant=parseInt(document.getElementById('pr-cant').value)||1;
-  const destino=document.getElementById('pr-destino').value;
-  const ref=document.getElementById('pr-ref').value.trim();
+  const vehiculo=document.getElementById('pr-vehiculo').value.trim();
   const vendedor=localStorage.getItem('tm_vendedor_nombre')||'';
   const pr={
     id: Date.now().toString(36)+Math.random().toString(36).slice(2,5),
     desc: desc.toUpperCase(),
     cant: cant,
-    destino: destino,
-    ref: ref,
+    vehiculo: vehiculo.toUpperCase(),
+    pedido_por: pedidoPor,
     vendedor: vendedor,
     fecha: new Date().toISOString(),
     estado: 'pendiente',
     proveedor: '',
+    precio: 0,
     fecha_pedido: '',
-    fecha_llegada: ''
+    fecha_llegada: '',
+    fecha_entrega: '',
+    notas: ''
   };
   _pedidosRapidos.unshift(pr);
   guardarPedidosRapidosSheet();
@@ -3084,7 +3091,7 @@ async function cargarPedidosRapidos(){
   // Luego sincronizar con Sheets
   try{
     const json=await fetchScript('action=readPedidosRapidos');
-    if(json&&json.ok&&json.data&&json.data.length){
+    if(json&&json.ok&&json.data){
       _pedidosRapidos=json.data;
       localStorage.setItem('tm_pedidos_rapidos', JSON.stringify(_pedidosRapidos));
       renderPedidosRapidos();
@@ -3092,72 +3099,105 @@ async function cargarPedidosRapidos(){
   }catch(e){}
 }
 
+// Iniciales del vendedor (ej. "JUAN CARLOS" -> "JC")
+function _prVendInit(nombre){
+  if(!nombre) return '';
+  return String(nombre).trim().split(/\s+/).map(function(w){return w.charAt(0).toUpperCase();}).join('');
+}
+
 function renderPedidosRapidos(){
   const cont=document.getElementById('pr-lista');
   if(!cont) return;
-  // Solo mostrar los que no han llegado
-  const activos=_pedidosRapidos.filter(function(p){ return p.estado!=='llegado'; });
-  const llegados=_pedidosRapidos.filter(function(p){ return p.estado==='llegado'; });
-  if(!activos.length&&!llegados.length){
+
+  // Separar por estado
+  const pendientes=_pedidosRapidos.filter(function(p){return p.estado==='pendiente';});
+  const pedidos   =_pedidosRapidos.filter(function(p){return p.estado==='pedido';});
+  const llegados  =_pedidosRapidos.filter(function(p){return p.estado==='llegado';});
+  const entregados=_pedidosRapidos.filter(function(p){return p.estado==='entregado';});
+
+  // Contador en el título
+  const ctd=document.getElementById('pr-contador');
+  if(ctd){
+    const partes=[];
+    if(pendientes.length) partes.push('🔴 '+pendientes.length);
+    if(pedidos.length)    partes.push('🟡 '+pedidos.length);
+    if(llegados.length)   partes.push('🟢 '+llegados.length);
+    if(entregados.length) partes.push('✅ '+entregados.length);
+    ctd.textContent=partes.join(' · ');
+  }
+
+  if(!_pedidosRapidos.length){
     cont.innerHTML='<div class="empty">Sin pedidos rápidos</div>'; return;
   }
+
+  // Orden: pendiente → pedido → llegado → entregado (y dentro, más reciente arriba)
+  const activos=pendientes.concat(pedidos).concat(llegados);
+
   let html='';
-  // Activos
   activos.forEach(function(pr){
-    const ahora=new Date();
-    const vend=pr.vendedor?pr.vendedor.trim().split(/\s+/).map(function(w){return w.charAt(0).toUpperCase();}).join(''):'';
-    const destinoColor=pr.destino==='Taller'?'#7c3aed':pr.destino==='Taxi'?'#0284c7':pr.destino==='Plantel'?'#b45309':'var(--mu)';
-    let estadoHTML='';
-    let infoHTML='';
-    if(pr.estado==='pendiente'){
-      estadoHTML='<button class="btn bg bxs" onclick="prPedir(\''+pr.id+'\')" style="font-size:12px">📦 Pedir</button>'
-        +'<button class="btn bxs" onclick="prBodega(\''+pr.id+'\')" style="margin-left:4px;background:#7c3aed;color:#fff;border:0;font-size:12px">🏪 Bodega</button>'
-        +'<button class="btn br bxs" onclick="prEliminar(\''+pr.id+'\')" style="margin-left:4px;font-size:11px">✕</button>';
-    } else if(pr.estado==='pedido'){
-      const diffMin=pr.fecha_pedido?Math.floor((ahora-new Date(pr.fecha_pedido))/60000):0;
-      infoHTML='<div style="font-size:10px;color:var(--mu);margin-top:2px">'+pr.proveedor+' · '+formatFechaHora(pr.fecha_pedido)+' <span style="color:#f59e0b;font-weight:600">('+formatTiempo(diffMin)+')</span></div>';
-      estadoHTML='<span style="font-size:13px">📦</span> <span style="color:#f59e0b;font-weight:700;font-size:12px">En pedido</span>'
-        +' <button class="btn bxs" onclick="prLlego(\''+pr.id+'\')" style="margin-left:6px;background:var(--gr);color:#fff;border:0;font-size:12px">✅ Llegó</button>'
-        +'<button class="btn br bxs" onclick="prEliminar(\''+pr.id+'\')" style="margin-left:4px;font-size:11px">✕</button>';
-    }
-    html+='<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)">'
-      +'<div style="flex:1">'
-      +'<div style="font-size:13px;font-weight:600">'+pr.desc+'</div>'
-      +'<div style="font-size:11px;color:var(--mu)">Cant: '+pr.cant
-        +' · <span style="color:'+destinoColor+';font-weight:600">'+pr.destino+'</span>'
-        +(pr.ref?' · '+pr.ref:'')
-        +(vend?' · '+vend:'')
-        +' · '+formatFechaHora(pr.fecha)
-      +'</div>'
-      +infoHTML
-      +'</div>'
-      +'<div style="text-align:right;white-space:nowrap">'+estadoHTML+'</div>'
-      +'</div>';
+    html+=_prRowHtml(pr);
   });
-  // Llegados (colapsados)
-  if(llegados.length){
-    html+='<div style="margin-top:8px;font-size:11px;color:var(--mu);cursor:pointer" onclick="togglePRLlegados()">'
-      +'<span id="pr-llegados-toggle">▶ Ver '+llegados.length+' llegado'+(llegados.length!==1?'s':'')+'</span></div>'
-      +'<div id="pr-llegados-list" style="display:none">';
-    llegados.forEach(function(pr){
-      const diffMin=(pr.fecha_pedido&&pr.fecha_llegada)?Math.floor((new Date(pr.fecha_llegada)-new Date(pr.fecha_pedido))/60000):0;
-      html+='<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--b1);opacity:.7">'
-        +'<div style="flex:1">'
-        +'<div style="font-size:12px;font-weight:600;text-decoration:line-through;color:var(--mu)">'+pr.desc+'</div>'
-        +'<div style="font-size:10px;color:var(--mu)">'+pr.destino+(pr.ref?' · '+pr.ref:'')+(pr.proveedor?' · '+pr.proveedor:'')+(diffMin?' · Tardó '+formatTiempo(diffMin):'')+'</div>'
-        +'</div>'
-        +'<span style="font-size:13px">✅</span>'
-        +'<button class="btn br bxs" onclick="prEliminar(\''+pr.id+'\')" style="font-size:11px">✕</button>'
-        +'</div>';
+
+  // Entregados colapsados (se archivarán en 24h)
+  if(entregados.length){
+    html+='<div style="margin-top:8px;font-size:11px;color:var(--mu);cursor:pointer" onclick="togglePREntregados()">'
+      +'<span id="pr-entregados-toggle">▶ Ver '+entregados.length+' entregado'+(entregados.length!==1?'s':'')+' (se archivan en 24h)</span></div>'
+      +'<div id="pr-entregados-list" style="display:none">';
+    entregados.forEach(function(pr){
+      html+=_prRowHtml(pr);
     });
     html+='</div>';
   }
+
   cont.innerHTML=html;
 }
 
-function togglePRLlegados(){
-  const list=document.getElementById('pr-llegados-list');
-  const toggle=document.getElementById('pr-llegados-toggle');
+// Renderiza una fila de pedido (click abre modal de detalle)
+function _prRowHtml(pr){
+  const ahora=new Date();
+  const vend=_prVendInit(pr.vendedor);
+  const cantTxt='Cant: '+pr.cant;
+  const vehTxt=pr.vehiculo?' · '+pr.vehiculo:'';
+  const pedidoPorTxt=pr.pedido_por?' · <span style="color:#0284c7;font-weight:600">Pide: '+pr.pedido_por+'</span>':'';
+  const vendTxt=vend?' · '+vend:'';
+  const fechaTxt=' · '+formatFechaHora(pr.fecha);
+
+  let badgeHTML='';
+  let infoHTML='';
+  let opacity='';
+
+  if(pr.estado==='pendiente'){
+    badgeHTML='<span style="background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700">🔴 Pendiente</span>';
+  } else if(pr.estado==='pedido'){
+    const diffMin=pr.fecha_pedido?Math.floor((ahora-new Date(pr.fecha_pedido))/60000):0;
+    const precioTxt=pr.precio>0?' · L '+Number(pr.precio).toFixed(2):'';
+    infoHTML='<div style="font-size:10px;color:var(--gr);margin-top:2px;font-weight:600">🏪 '+pr.proveedor+precioTxt+' · '+formatFechaHora(pr.fecha_pedido)+' <span style="color:#f59e0b">('+formatTiempo(diffMin)+')</span></div>';
+    badgeHTML='<span style="background:#fed7aa;color:#9a3412;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700">🟡 En pedido</span>';
+  } else if(pr.estado==='llegado'){
+    const diffMin=(pr.fecha_pedido&&pr.fecha_llegada)?Math.floor((new Date(pr.fecha_llegada)-new Date(pr.fecha_pedido))/60000):0;
+    const precioTxt=pr.precio>0?' · L '+Number(pr.precio).toFixed(2):'';
+    infoHTML='<div style="font-size:10px;color:var(--gr);margin-top:2px;font-weight:600">🏪 '+pr.proveedor+precioTxt+(diffMin?' · Tardó '+formatTiempo(diffMin):'')+'</div>';
+    badgeHTML='<span style="background:#bbf7d0;color:#166534;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700">🟢 Llegó</span>';
+  } else if(pr.estado==='entregado'){
+    const precioTxt=pr.precio>0?' · L '+Number(pr.precio).toFixed(2):'';
+    infoHTML='<div style="font-size:10px;color:var(--mu);margin-top:2px">🏪 '+pr.proveedor+precioTxt+' · Entregado '+formatFechaHora(pr.fecha_entrega)+'</div>';
+    badgeHTML='<span style="background:#e5e7eb;color:#374151;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700">✅ Entregado</span>';
+    opacity='opacity:.7;';
+  }
+
+  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1);cursor:pointer;'+opacity+'" onclick="abrirDetallePR(\''+pr.id+'\')">'
+    +'<div style="flex:1;min-width:0">'
+    +'<div style="font-size:13px;font-weight:600">'+pr.desc+'</div>'
+    +'<div style="font-size:11px;color:var(--mu)">'+cantTxt+vehTxt+pedidoPorTxt+vendTxt+fechaTxt+'</div>'
+    +infoHTML
+    +'</div>'
+    +'<div style="text-align:right;white-space:nowrap">'+badgeHTML+'</div>'
+    +'</div>';
+}
+
+function togglePREntregados(){
+  const list=document.getElementById('pr-entregados-list');
+  const toggle=document.getElementById('pr-entregados-toggle');
   if(!list||!toggle) return;
   if(list.style.display==='none'){
     list.style.display='block';
@@ -3168,56 +3208,140 @@ function togglePRLlegados(){
   }
 }
 
-let _prPidiendoId=null;
+// --- Abrir modal de detalle (reutiliza modal-seguimiento) ---
+function abrirDetallePR(id){
+  const pr=_pedidosRapidos.find(function(p){return p.id===id;});
+  if(!pr) return;
+  _prDetalleId=id;
+  _segPfId=null; _segProdIdx=null; // marcar que NO es producto de proforma
 
+  const titulo=document.getElementById('seg-titulo');
+  const content=document.getElementById('seg-content');
+  if(!titulo||!content) return;
+
+  const estadoTxt={
+    pendiente:'🔴 Pendiente',
+    pedido:'🟡 En pedido',
+    llegado:'🟢 Llegó',
+    entregado:'✅ Entregado'
+  }[pr.estado]||pr.estado;
+
+  titulo.textContent='📦 Pedido Rápido';
+
+  let html='';
+  html+='<div style="background:var(--s2);padding:12px;border-radius:var(--r);margin-bottom:12px">';
+  html+='<div style="font-size:15px;font-weight:700;margin-bottom:6px">'+pr.desc+'</div>';
+  html+='<div style="font-size:12px;color:var(--mu);line-height:1.6">';
+  html+='<div><strong>Cantidad:</strong> '+pr.cant+'</div>';
+  if(pr.vehiculo) html+='<div><strong>Vehículo:</strong> '+pr.vehiculo+'</div>';
+  html+='<div><strong>Pedido por:</strong> '+(pr.pedido_por||'—')+'</div>';
+  html+='<div><strong>Registrado por:</strong> '+_prVendInit(pr.vendedor)+' · '+formatFechaHora(pr.fecha)+'</div>';
+  if(pr.proveedor){
+    const precioTxt=pr.precio>0?' · L '+Number(pr.precio).toFixed(2):'';
+    html+='<div style="color:var(--gr);font-weight:600;margin-top:4px">🏪 '+pr.proveedor+precioTxt+'</div>';
+  }
+  if(pr.fecha_pedido)  html+='<div><strong>Fecha pedido:</strong> '+formatFechaHora(pr.fecha_pedido)+'</div>';
+  if(pr.fecha_llegada) html+='<div><strong>Fecha llegada:</strong> '+formatFechaHora(pr.fecha_llegada)+'</div>';
+  if(pr.fecha_entrega) html+='<div><strong>Fecha entrega:</strong> '+formatFechaHora(pr.fecha_entrega)+'</div>';
+  if(pr.notas) html+='<div><strong>Notas:</strong> '+pr.notas+'</div>';
+  html+='<div style="margin-top:6px"><strong>Estado:</strong> '+estadoTxt+'</div>';
+  html+='</div></div>';
+
+  // Acciones según estado
+  html+='<div style="display:flex;flex-direction:column;gap:8px">';
+  if(pr.estado==='pendiente'){
+    html+='<button class="btn bg" onclick="prPedir(\''+pr.id+'\')" style="width:100%">📦 Marcar como Pedido (con proveedor)</button>';
+    html+='<button class="btn" onclick="prBodega(\''+pr.id+'\')" style="width:100%;background:#7c3aed;color:#fff;border:0">🏪 Tomar de Bodega</button>';
+  } else if(pr.estado==='pedido'){
+    html+='<button class="btn bg" onclick="prLlego(\''+pr.id+'\')" style="width:100%">✅ Marcar como Llegó</button>';
+    html+='<button class="btn bgh" onclick="prDeshacer(\''+pr.id+'\')" style="width:100%">↩️ Deshacer (volver a Pendiente)</button>';
+  } else if(pr.estado==='llegado'){
+    html+='<button class="btn bg" onclick="prEntregar(\''+pr.id+'\')" style="width:100%">🤝 Marcar como Entregado</button>';
+    html+='<button class="btn bgh" onclick="prDeshacer(\''+pr.id+'\')" style="width:100%">↩️ Deshacer (volver a Pedido)</button>';
+  } else if(pr.estado==='entregado'){
+    html+='<div style="background:#ecfdf5;padding:10px;border-radius:var(--r);text-align:center;color:#065f46;font-size:12px">Se archivará automáticamente en 24h</div>';
+    html+='<button class="btn bgh" onclick="prDeshacer(\''+pr.id+'\')" style="width:100%">↩️ Deshacer (volver a Llegó)</button>';
+  }
+  html+='<button class="btn br" onclick="prEliminar(\''+pr.id+'\')" style="width:100%;margin-top:8px">🗑️ Eliminar pedido</button>';
+  html+='</div>';
+
+  content.innerHTML=html;
+  document.getElementById('modal-seguimiento').classList.add('on');
+}
+
+// --- Marcar como pedido (abre modal-pedir con campo precio) ---
 function prPedir(id){
   _prPidiendoId=id;
-  // Reusar el modal de pedir
   _segPfId=null; _segProdIdx=null;
+  cerrarModal('modal-seguimiento');
+
+  // Construir lista de proveedores desde DBcompras + _proveedores
   const provSet={};
   Object.values(DBcompras).forEach(function(entradas){
     if(Array.isArray(entradas)) entradas.forEach(function(e){ if(e&&e.p) provSet[e.p.trim().toUpperCase()]=true; });
   });
-  _proveedores.forEach(function(p){ provSet[p.toUpperCase()]=true; });
+  if(typeof _proveedores!=='undefined'){
+    _proveedores.forEach(function(p){ provSet[p.toUpperCase()]=true; });
+  }
   _provListCache=Object.keys(provSet).sort();
+
   const inp=document.getElementById('pedir-prov-input');
   inp.value='';
   document.getElementById('pedir-prov-lista').style.display='none';
+
+  // Mostrar campo precio solo para pedidos rápidos
+  const precioWrap=document.getElementById('pedir-precio-wrap');
+  const precioInp=document.getElementById('pedir-precio-input');
+  if(precioWrap) precioWrap.style.display='block';
+  if(precioInp) precioInp.value='';
+
   document.getElementById('modal-pedir').classList.add('on');
   setTimeout(function(){ inp.focus(); },100);
 }
 
-// Override confirmarPedido para manejar pedidos rápidos también
+// --- Override confirmarPedido para manejar pedidos rápidos ---
 const _confirmarPedidoOriginal = confirmarPedido;
 confirmarPedido = function(){
   if(_prPidiendoId){
     const prov=document.getElementById('pedir-prov-input').value.trim();
     if(!prov){ toast('Selecciona o escribe un proveedor','err'); return; }
+    const precioInp=document.getElementById('pedir-precio-input');
+    const precio=precioInp?(parseFloat(precioInp.value)||0):0;
     const pr=_pedidosRapidos.find(function(p){return p.id===_prPidiendoId;});
     if(pr){
       pr.estado='pedido';
       pr.proveedor=prov.toUpperCase();
+      pr.precio=precio;
       pr.fecha_pedido=new Date().toISOString();
       guardarPedidosRapidosSheet();
       renderPedidosRapidos();
     }
     _prPidiendoId=null;
     cerrarModal('modal-pedir');
+    // Ocultar campo precio para siguientes usos del modal
+    const precioWrap=document.getElementById('pedir-precio-wrap');
+    if(precioWrap) precioWrap.style.display='none';
     toast('📦 Pedido a '+prov,'ok');
   } else {
+    // Asegurar que precio está oculto para pedidos de proforma
+    const precioWrap=document.getElementById('pedir-precio-wrap');
+    if(precioWrap) precioWrap.style.display='none';
     _confirmarPedidoOriginal();
   }
 };
 
+// --- Acciones sobre pedidos rápidos ---
 function prBodega(id){
   const pr=_pedidosRapidos.find(function(p){return p.id===id;});
   if(!pr) return;
   pr.estado='llegado';
   pr.proveedor='BODEGA';
+  pr.precio=0;
   pr.fecha_pedido=new Date().toISOString();
   pr.fecha_llegada=new Date().toISOString();
   guardarPedidosRapidosSheet();
   renderPedidosRapidos();
+  cerrarModal('modal-seguimiento');
   toast('🏪 Tomado de bodega','ok');
 }
 
@@ -3228,14 +3352,51 @@ function prLlego(id){
   pr.fecha_llegada=new Date().toISOString();
   guardarPedidosRapidosSheet();
   renderPedidosRapidos();
+  cerrarModal('modal-seguimiento');
   toast('✅ Repuesto llegó','ok');
 }
 
+function prEntregar(id){
+  const pr=_pedidosRapidos.find(function(p){return p.id===id;});
+  if(!pr) return;
+  pr.estado='entregado';
+  pr.fecha_entrega=new Date().toISOString();
+  guardarPedidosRapidosSheet();
+  renderPedidosRapidos();
+  cerrarModal('modal-seguimiento');
+  toast('🤝 Entregado al cliente','ok');
+}
+
+function prDeshacer(id){
+  const pr=_pedidosRapidos.find(function(p){return p.id===id;});
+  if(!pr) return;
+  if(!confirm('¿Volver al estado anterior?')) return;
+  if(pr.estado==='entregado'){
+    pr.estado='llegado';
+    pr.fecha_entrega='';
+  } else if(pr.estado==='llegado'){
+    pr.estado='pedido';
+    pr.fecha_llegada='';
+  } else if(pr.estado==='pedido'){
+    pr.estado='pendiente';
+    pr.fecha_pedido='';
+    pr.proveedor='';
+    pr.precio=0;
+  }
+  guardarPedidosRapidosSheet();
+  renderPedidosRapidos();
+  cerrarModal('modal-seguimiento');
+  toast('↩️ Estado revertido','ok');
+}
+
 function prEliminar(id){
-  if(!confirm('¿Eliminar este pedido?')) return;
+  const pr=_pedidosRapidos.find(function(p){return p.id===id;});
+  if(!pr) return;
+  if(!confirm('¿Eliminar este pedido?\n\n'+pr.desc)) return;
   _pedidosRapidos=_pedidosRapidos.filter(function(p){return p.id!==id;});
   guardarPedidosRapidosSheet();
   renderPedidosRapidos();
+  cerrarModal('modal-seguimiento');
 }
 
 </script>
@@ -3265,6 +3426,13 @@ function prEliminar(id){
       <div id="pedir-prov-lista" style="position:absolute;top:100%;left:0;right:0;max-height:220px;overflow-y:auto;
         background:var(--s1);border:1px solid var(--b2);border-radius:var(--r2);z-index:300;display:none;
         box-shadow:0 8px 24px rgba(0,0,0,.15)"></div>
+    </div>
+    <!-- Campo precio: solo visible para Pedidos Rápidos -->
+    <div class="f" id="pedir-precio-wrap" style="display:none;margin-top:10px">
+      <label>Precio (L) <span style="color:var(--mu);font-weight:normal;font-size:11px">— opcional</span></label>
+      <input id="pedir-precio-input" type="number" step="0.01" min="0" placeholder="0.00"
+        onkeydown="if(event.key==='Escape') cerrarModal('modal-pedir');if(event.key==='Enter') confirmarPedido();"
+        style="width:100%">
     </div>
     <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
       <button class="btn bgh" onclick="cerrarModal('modal-pedir')">Cancelar</button>
