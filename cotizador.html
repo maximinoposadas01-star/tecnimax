@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr72'){
+        if(marker !== 'pr73'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr72');
+    localStorage.setItem('tm_sw_version', 'pr73');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604180100-pr72';
+    const VERSION = '202604180200-pr73';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -1336,7 +1336,7 @@ function renderLista(tipo){
     return;
   }
   cont.innerHTML=`
-    <div class="irow-hdr" style="grid-template-columns:1fr 60px 90px 80px 30px">
+    <div class="irow-hdr" style="grid-template-columns:1fr 60px 90px 80px 60px">
       <span>Descripción</span>
       <span style="text-align:center">Cant</span>
       <span style="text-align:right">P. Unit</span>
@@ -1369,10 +1369,10 @@ function renderLista(tipo){
           if(ciSort.length>1) compraHtml+=`<div style="font-size:9px;color:var(--mu)">🏪 ${ciSort[1].p} · L ${ciSort[1].c.toFixed(2)}${ciSort[1].f?' · '+ciSort[1].f:''}</div>`;
         }
       }
-      return `<div class="irow" style="grid-template-columns:1fr 60px 90px 80px 30px">
+      return `<div class="irow" style="grid-template-columns:1fr 60px 90px 80px 60px;${it.facturado?'opacity:.55;background:#f0fdf4':''}">
         <div>
-          <div style="font-size:13px;font-weight:500">
-            ${it.deOrden?`<span class="ord-bd">#${it.deOrden}</span>`:''}${it.desc}
+          <div style="font-size:13px;font-weight:500;${it.facturado?'text-decoration:line-through':''}">
+            ${it.deOrden?`<span class="ord-bd">#${it.deOrden}</span>`:''}${it.desc}${it.facturado?' <span style="background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;margin-left:4px;text-decoration:none;display:inline-block">📋 FACTURADO</span>':''}
           </div>
           <div style="font-size:11px;color:var(--mu);margin-top:2px">
             ${mon} ${fmt(it.precio)} + ${it.isv}% ISV${it.ajusteAnt?` <span style="color:var(--gold);font-weight:600">· Ajustado ${it.ajusteAnt}</span>`:''}
@@ -1392,7 +1392,10 @@ function renderLista(tipo){
         <div style="text-align:right;font-size:13px;font-weight:600;color:var(--tx);padding-top:6px">
           ${mon} ${fmt(total)}
         </div>
-        <div><button class="btn br bxs" onclick="elimItem('${tipo}',${i})">\u2715</button></div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <button class="btn bxs" onclick="togglePFfacturado('${tipo}',${i})" style="background:${it.facturado?'#e5e7eb':'#059669'};color:${it.facturado?'#374151':'#fff'};border:0;font-size:10px;padding:3px 4px" title="${it.facturado?'Desmarcar facturado':'Copiar y marcar como facturado'}">${it.facturado?'↩':'📋'}</button>
+          <button class="btn br bxs" onclick="elimItem('${tipo}',${i})">\u2715</button>
+        </div>
       </div>`;
     }).join('')}`;
 }
@@ -1407,6 +1410,50 @@ function updPrecioUnit(tipo,i,val){
   const arr=tipo==='prod'?pfActual.prods:pfActual.servs;
   arr[i].precio=parseFloat(val)||0;
   renderLista(tipo); recalc();
+}
+
+// Marca/desmarca un item como facturado. Al marcar: copia la descripción al portapapeles.
+// Persiste el cambio directamente en el array proformas (no requiere volver a guardar).
+function togglePFfacturado(tipo,i){
+  const arr=tipo==='prod'?pfActual.prods:pfActual.servs;
+  const it=arr[i];
+  if(!it) return;
+
+  if(it.facturado){
+    // Desmarcar
+    delete it.facturado;
+    delete it.fecha_facturado;
+    _sincronizarPFactualConProformas();
+    renderLista(tipo);
+    toast('↩ Desmarcado','ok');
+  } else {
+    // Marcar + copiar al portapapeles
+    it.facturado=true;
+    it.fecha_facturado=new Date().toISOString();
+    const textoCopiar=String(it.desc||it.cod||'').trim();
+    _sincronizarPFactualConProformas();
+    renderLista(tipo);
+    _copiarAlPortapapeles(textoCopiar).then(function(ok){
+      if(ok) toast('📋 Copiado: '+textoCopiar,'ok');
+      else toast('📋 Marcado (no se pudo copiar automáticamente)','ok');
+    });
+  }
+}
+
+// Copia los cambios de pfActual al array principal proformas y sincroniza a Sheets.
+// Se usa cuando cambiamos estado de items individuales sin pasar por guardarPF completa.
+function _sincronizarPFactualConProformas(){
+  if(!pfActual.id) return;  // proforma nueva sin guardar aún
+  const pf=proformas.find(function(p){return p.id===pfActual.id;});
+  if(!pf) return;
+  // Copiar los arrays actualizados
+  pf.prods=[...pfActual.prods];
+  pf.servs=[...pfActual.servs];
+  savePF();
+  // Sincronizar a Sheets en background
+  syncPFtoSheet(pf).catch(function(e){
+    console.warn('[togglePFfacturado] sync falló:',e);
+  });
 }
 function updTotal(tipo,i,val){
   const arr=tipo==='prod'?pfActual.prods:pfActual.servs;
@@ -3056,10 +3103,8 @@ function renderSegItem(item,idx,tipo,ahora){
       +'<button class="btn bxs" onclick="revertirPedido('+idx+',\''+tipo+'\')" style="margin-left:8px;font-size:10px;color:var(--mu)">↩</button>';
   }
 
-  // Botón Facturar — copia al portapapeles y tacha el item
-  const btnFactura = facturado
-    ? '<button class="btn bxs" onclick="toggleFacturado('+idx+',\''+tipo+'\')" style="margin-top:6px;background:#e5e7eb;color:#374151;border:0;font-size:11px" title="Desmarcar como facturado">↩ Desmarcar</button>'
-    : '<button class="btn bxs" onclick="toggleFacturado('+idx+',\''+tipo+'\')" style="margin-top:6px;background:#059669;color:#fff;border:0;font-size:11px" title="Copiar y marcar como facturado">📋 Facturar</button>';
+  // El botón Facturar YA NO está aquí (solo en la vista de Proforma editable, donde hay precios de venta).
+  // Mantenemos solo el indicador visual (tachado + badge) para ver el progreso también aquí.
 
   // Buscar info de compras usando buscarCompra (solo para productos)
   let compraInfo='';
@@ -3087,44 +3132,9 @@ function renderSegItem(item,idx,tipo,ahora){
     +'<div style="font-size:11px;color:var(--mu)">Cant: '+(item.cantidad||1)+'</div>'
     +compraInfo
     +tiempoHTML
-    +btnFactura
     +'</div>'
     +'<div style="text-align:right;white-space:nowrap">'+estadoHTML+'</div>'
     +'</div>';
-}
-
-// Alterna el estado facturado del item. Si se marca, copia la descripción al portapapeles.
-function toggleFacturado(idx,tipo){
-  const pf=proformas.find(function(p){return p.id===_segPfId;});
-  if(!pf) return;
-  const arr=tipo==='prod'?pf.prods:pf.servs;
-  if(!arr||!arr[idx]) return;
-
-  const item=arr[idx];
-  if(item.facturado){
-    // Desmarcar
-    delete item.facturado;
-    delete item.fecha_facturado;
-    savePF();
-    syncPFtoSheet(pf);
-    renderSeguimiento(pf);
-    _actualizarVistas();
-    toast('↩ Desmarcado','ok');
-  } else {
-    // Marcar + copiar descripción al portapapeles
-    item.facturado=true;
-    item.fecha_facturado=new Date().toISOString();
-    const textoCopiar=String(item.desc||item.cod||'').trim();
-    savePF();
-    syncPFtoSheet(pf);
-    renderSeguimiento(pf);
-    _actualizarVistas();
-    _copiarAlPortapapeles(textoCopiar)
-      .then(function(ok){
-        if(ok) toast('📋 Copiado: '+textoCopiar,'ok');
-        else toast('📋 Marcado (no se pudo copiar automáticamente)','ok');
-      });
-  }
 }
 
 // Helper robusto para copiar al portapapeles. Prueba Clipboard API; si falla,
