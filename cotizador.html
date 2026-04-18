@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr73'){
+        if(marker !== 'pr75'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr73');
+    localStorage.setItem('tm_sw_version', 'pr75');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604180200-pr73';
+    const VERSION = '202604180300-pr75';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -819,7 +819,7 @@ function loadPF(){
   // 2. Al iniciar: SUBIR locales primero, luego bajar de Sheets
   setTimeout(()=>sincronizarTodo(true),800);
   // 3. Auto-sync cada 60 segundos
-  setInterval(()=>sincronizarTodo(true),60000);
+  setInterval(()=>sincronizarTodo(true),30000);
 }
 
 // Función principal — sube locales a Sheets Y baja todo de Sheets
@@ -1392,9 +1392,9 @@ function renderLista(tipo){
         <div style="text-align:right;font-size:13px;font-weight:600;color:var(--tx);padding-top:6px">
           ${mon} ${fmt(total)}
         </div>
-        <div style="display:flex;flex-direction:column;gap:3px">
-          <button class="btn bxs" onclick="togglePFfacturado('${tipo}',${i})" style="background:${it.facturado?'#e5e7eb':'#059669'};color:${it.facturado?'#374151':'#fff'};border:0;font-size:10px;padding:3px 4px" title="${it.facturado?'Desmarcar facturado':'Copiar y marcar como facturado'}">${it.facturado?'↩':'📋'}</button>
-          <button class="btn br bxs" onclick="elimItem('${tipo}',${i})">\u2715</button>
+        <div style="display:flex;flex-direction:column;gap:10px;align-items:stretch">
+          <button class="btn bxs" onclick="togglePFfacturado('${tipo}',${i})" style="background:${it.facturado?'#e5e7eb':'#059669'};color:${it.facturado?'#374151':'#fff'};border:0;font-size:11px;padding:5px 6px;min-height:26px" title="${it.facturado?'Desmarcar facturado':'Copiar y marcar como facturado'}">${it.facturado?'↩':'📋'}</button>
+          <button class="btn br bxs" onclick="elimItem('${tipo}',${i})" style="font-size:11px;padding:5px 6px;min-height:26px;border:1px solid var(--b1)" title="Eliminar producto">✕</button>
         </div>
       </div>`;
     }).join('')}`;
@@ -1466,6 +1466,10 @@ function updTotal(tipo,i,val){
 }
 function elimItem(tipo,i){
   const arr=tipo==='prod'?pfActual.prods:pfActual.servs;
+  const it=arr[i];
+  if(!it) return;
+  const nombre=String(it.desc||it.cod||'').trim();
+  if(!confirm('¿Eliminar este '+(tipo==='prod'?'producto':'servicio')+'?\n\n'+nombre)) return;
   arr.splice(i,1); renderLista(tipo); recalc();
 }
 
@@ -2618,13 +2622,13 @@ document.addEventListener('DOMContentLoaded', function(){
 // Sincronizar al volver a la pestaña o ventana
 let _lastAutoSync=0;
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible'&&Date.now()-_lastAutoSync>20000){
+  if(document.visibilityState==='visible'&&Date.now()-_lastAutoSync>10000){
     _lastAutoSync=Date.now();
     sincronizarTodo(true);
   }
 });
 window.addEventListener('focus',()=>{
-  if(Date.now()-_lastAutoSync>20000){
+  if(Date.now()-_lastAutoSync>10000){
     _lastAutoSync=Date.now();
     sincronizarTodo(true);
   }
