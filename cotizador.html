@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr71'){
+        if(marker !== 'pr72'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr71');
+    localStorage.setItem('tm_sw_version', 'pr72');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604180030-pr71';
+    const VERSION = '202604180100-pr72';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -2986,25 +2986,51 @@ function renderSeguimiento(pf){
   const ahora=new Date();
   let html='';
 
+  // Contador de facturados
+  const prods=pf.prods||[];
+  const servs=pf.servs||[];
+  const totalItems=prods.length+servs.length;
+  const facturados=prods.filter(function(x){return x.facturado;}).length
+                 +servs.filter(function(x){return x.facturado;}).length;
+  if(totalItems>0){
+    const pct=Math.round((facturados/totalItems)*100);
+    const color=facturados===totalItems?'#059669':(facturados>0?'#f59e0b':'var(--mu)');
+    html+='<div style="background:var(--s2);padding:8px 12px;border-radius:6px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">'
+      +'<span style="font-size:12px;color:var(--mu);font-weight:600">📋 Facturados</span>'
+      +'<span style="font-size:13px;color:'+color+';font-weight:700">'+facturados+' / '+totalItems+' ('+pct+'%)</span>'
+      +'</div>';
+  }
+
   // Productos
-  if(pf.prods&&pf.prods.length){
+  if(prods.length){
     html+='<div style="font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Productos</div>';
-    pf.prods.forEach(function(prod,i){
+    prods.forEach(function(prod,i){
       html+=renderSegItem(prod,i,'prod',ahora);
     });
   }
 
-  // Servicios no se muestran en seguimiento (no se piden a proveedores)
+  // Servicios (se muestran más compactos, solo para marcar facturados)
+  if(servs.length){
+    html+='<div style="font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-top:16px;margin-bottom:8px">Servicios</div>';
+    servs.forEach(function(serv,i){
+      html+=renderSegItem(serv,i,'serv',ahora);
+    });
+  }
 
   document.getElementById('seg-content').innerHTML=html||'<div class="empty">Sin items</div>';
 }
 
 function renderSegItem(item,idx,tipo,ahora){
   const est=item.seguimiento||'pendiente';
+  const facturado=!!item.facturado;
+  const esServ=tipo==='serv';
   let estadoHTML='';
   let tiempoHTML='';
 
-  if(est==='pendiente'){
+  if(esServ){
+    // Servicios: no se piden a proveedores, solo se marcan como facturados
+    estadoHTML='<span style="color:var(--mu);font-size:11px">Servicio</span>';
+  } else if(est==='pendiente'){
     estadoHTML='<span style="color:var(--mu);font-size:12px">○ Sin pedir</span>'
       +'<button class="btn bg bxs" onclick="iniciarPedido('+idx+',\''+tipo+'\')" style="margin-left:8px">📦 Pedir</button>'
       +'<button class="btn bxs" onclick="marcarBodega('+idx+',\''+tipo+'\')" style="margin-left:4px;background:#7c3aed;color:#fff;border:0" title="Disponible en bodega";font-size:13px">🏪 Bodega</button>';
@@ -3030,24 +3056,109 @@ function renderSegItem(item,idx,tipo,ahora){
       +'<button class="btn bxs" onclick="revertirPedido('+idx+',\''+tipo+'\')" style="margin-left:8px;font-size:10px;color:var(--mu)">↩</button>';
   }
 
-  // Buscar info de compras usando buscarCompra (misma lógica que la proforma)
+  // Botón Facturar — copia al portapapeles y tacha el item
+  const btnFactura = facturado
+    ? '<button class="btn bxs" onclick="toggleFacturado('+idx+',\''+tipo+'\')" style="margin-top:6px;background:#e5e7eb;color:#374151;border:0;font-size:11px" title="Desmarcar como facturado">↩ Desmarcar</button>'
+    : '<button class="btn bxs" onclick="toggleFacturado('+idx+',\''+tipo+'\')" style="margin-top:6px;background:#059669;color:#fff;border:0;font-size:11px" title="Copiar y marcar como facturado">📋 Facturar</button>';
+
+  // Buscar info de compras usando buscarCompra (solo para productos)
   let compraInfo='';
-  const ci=buscarCompra(item.cod||item.desc||'');
-  if(ci&&ci.length){
-    const ciSort=ci.slice().sort(function(a,b){return (b.f||'').localeCompare(a.f||'');});
-    compraInfo='<div style="font-size:10px;color:var(--gr);font-weight:600;margin-top:2px">🏪 '+ciSort[0].p+' · L '+ciSort[0].c.toFixed(2)+' · '+ciSort[0].f+'</div>';
-    if(ciSort.length>1) compraInfo+='<div style="font-size:10px;color:var(--mu);margin-top:1px">🏪 '+ciSort[1].p+' · L '+ciSort[1].c.toFixed(2)+(ciSort[1].f?' · '+ciSort[1].f:'')+'</div>';
+  if(!esServ){
+    const ci=buscarCompra(item.cod||item.desc||'');
+    if(ci&&ci.length){
+      const ciSort=ci.slice().sort(function(a,b){return (b.f||'').localeCompare(a.f||'');});
+      compraInfo='<div style="font-size:10px;color:var(--gr);font-weight:600;margin-top:2px">🏪 '+ciSort[0].p+' · L '+ciSort[0].c.toFixed(2)+' · '+ciSort[0].f+'</div>';
+      if(ciSort.length>1) compraInfo+='<div style="font-size:10px;color:var(--mu);margin-top:1px">🏪 '+ciSort[1].p+' · L '+ciSort[1].c.toFixed(2)+(ciSort[1].f?' · '+ciSort[1].f:'')+'</div>';
+    }
   }
 
-  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)">'
+  // Estilos cuando está facturado: tachado y atenuado
+  const descStyle = facturado
+    ? 'font-size:13px;font-weight:500;text-decoration:line-through;color:var(--mu)'
+    : 'font-size:13px;font-weight:500';
+  const rowOpacity = facturado ? 'opacity:.55;' : '';
+  const badgeFact = facturado
+    ? '<span style="background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;margin-left:6px">📋 FACTURADO</span>'
+    : '';
+
+  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1);'+rowOpacity+'">'
     +'<div style="flex:1">'
-    +'<div style="font-size:13px;font-weight:500">'+(item.desc||item.cod||'—')+'</div>'
+    +'<div style="'+descStyle+'">'+(item.desc||item.cod||'—')+badgeFact+'</div>'
     +'<div style="font-size:11px;color:var(--mu)">Cant: '+(item.cantidad||1)+'</div>'
     +compraInfo
     +tiempoHTML
+    +btnFactura
     +'</div>'
     +'<div style="text-align:right;white-space:nowrap">'+estadoHTML+'</div>'
     +'</div>';
+}
+
+// Alterna el estado facturado del item. Si se marca, copia la descripción al portapapeles.
+function toggleFacturado(idx,tipo){
+  const pf=proformas.find(function(p){return p.id===_segPfId;});
+  if(!pf) return;
+  const arr=tipo==='prod'?pf.prods:pf.servs;
+  if(!arr||!arr[idx]) return;
+
+  const item=arr[idx];
+  if(item.facturado){
+    // Desmarcar
+    delete item.facturado;
+    delete item.fecha_facturado;
+    savePF();
+    syncPFtoSheet(pf);
+    renderSeguimiento(pf);
+    _actualizarVistas();
+    toast('↩ Desmarcado','ok');
+  } else {
+    // Marcar + copiar descripción al portapapeles
+    item.facturado=true;
+    item.fecha_facturado=new Date().toISOString();
+    const textoCopiar=String(item.desc||item.cod||'').trim();
+    savePF();
+    syncPFtoSheet(pf);
+    renderSeguimiento(pf);
+    _actualizarVistas();
+    _copiarAlPortapapeles(textoCopiar)
+      .then(function(ok){
+        if(ok) toast('📋 Copiado: '+textoCopiar,'ok');
+        else toast('📋 Marcado (no se pudo copiar automáticamente)','ok');
+      });
+  }
+}
+
+// Helper robusto para copiar al portapapeles. Prueba Clipboard API; si falla,
+// usa el viejo método de textarea+execCommand como fallback.
+function _copiarAlPortapapeles(texto){
+  return new Promise(function(resolve){
+    if(!texto){ resolve(false); return; }
+    // Método moderno
+    if(navigator.clipboard && window.isSecureContext){
+      navigator.clipboard.writeText(texto)
+        .then(function(){ resolve(true); })
+        .catch(function(){ resolve(_copiarFallback(texto)); });
+      return;
+    }
+    resolve(_copiarFallback(texto));
+  });
+}
+
+function _copiarFallback(texto){
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=texto;
+    ta.style.position='fixed';
+    ta.style.top='-9999px';
+    ta.style.left='-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok=document.execCommand('copy');
+    document.body.removeChild(ta);
+    return !!ok;
+  }catch(e){
+    return false;
+  }
 }
 
 function formatFechaHora(isoStr){
