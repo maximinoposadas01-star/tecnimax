@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr75'){
+        if(marker !== 'pr76'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr75');
+    localStorage.setItem('tm_sw_version', 'pr76');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604180300-pr75';
+    const VERSION = '202604182100-pr76';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -3465,10 +3465,10 @@ function renderPedidosRapidos(){
     html+=_prRowHtml(pr);
   });
 
-  // Entregados colapsados (se archivarán en 24h)
+  // Entregados colapsados (se archivan al cambiar de día)
   if(entregados.length){
     html+='<div style="margin-top:8px;font-size:11px;color:var(--mu);cursor:pointer" data-action="togglePREnt">'
-      +'<span id="pr-entregados-toggle">▶ Ver '+entregados.length+' entregado'+(entregados.length!==1?'s':'')+' (se archivan en 24h)</span></div>'
+      +'<span id="pr-entregados-toggle">▶ Ver '+entregados.length+' entregado'+(entregados.length!==1?'s':'')+' (se archivan mañana)</span></div>'
       +'<div id="pr-entregados-list" style="display:none">';
     entregados.forEach(function(pr){
       html+=_prRowHtml(pr);
@@ -3597,7 +3597,7 @@ function abrirDetallePR(id){
     html+='<button class="btn bg" data-action="prEntregar" data-arg="'+pr.id+'" style="width:100%">🤝 Marcar como Entregado</button>';
     html+='<button class="btn bgh" data-action="prDeshacer" data-arg="'+pr.id+'" style="width:100%">↩️ Deshacer (volver a Pedido)</button>';
   } else if(pr.estado==='entregado'){
-    html+='<div style="background:#ecfdf5;padding:10px;border-radius:var(--r);text-align:center;color:#065f46;font-size:12px">Se archivará automáticamente en 24h</div>';
+    html+='<div style="background:#ecfdf5;padding:10px;border-radius:var(--r);text-align:center;color:#065f46;font-size:12px">Se archivará automáticamente mañana</div>';
     html+='<button class="btn bgh" data-action="prDeshacer" data-arg="'+pr.id+'" style="width:100%">↩️ Deshacer (volver a Llegó)</button>';
   }
   html+='<button class="btn br" data-action="prEliminar" data-arg="'+pr.id+'" style="width:100%;margin-top:8px">🗑️ Eliminar pedido</button>';
