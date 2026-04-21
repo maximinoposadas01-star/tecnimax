@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="version" content="202604220000">
+<meta name="version" content="202604220100">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr83'){
+        if(marker !== 'pr84'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr83');
+    localStorage.setItem('tm_sw_version', 'pr84');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604220000-pr83';
+    const VERSION = '202604220100-pr84';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -399,7 +399,19 @@ tbody tr:hover td{background:var(--s2)}
   <!-- Info general -->
   <div class="card">
     <div class="ctitle">Información General</div>
-    <div class="f mb0"><label>Vendedor</label><input id="pf-vend" placeholder="Nombre del vendedor"></div>
+    <div class="g2" style="margin-bottom:0">
+      <div class="f mb0"><label>Vendedor</label><input id="pf-vend" placeholder="Nombre del vendedor"></div>
+      <div class="f mb0">
+        <label>Jefe de Pista <span style="font-weight:400;color:var(--mu);font-size:10px">(opcional)</span></label>
+        <select id="pf-jefe" onchange="onChangeJefePista()" style="width:100%">
+          <option value="">— Sin asignar —</option>
+          <option value="Juan Carlos">Juan Carlos</option>
+          <option value="Javier Alvarado">Javier Alvarado</option>
+          <option value="__otro__">＋ Otro…</option>
+        </select>
+        <input id="pf-jefe-otro" type="text" placeholder="Escribe el nombre" style="display:none;margin-top:6px;width:100%">
+      </div>
+    </div>
     <input type="hidden" id="pf-fecha"><input type="hidden" id="pf-vence"><input type="hidden" id="pf-mon" value="HNL">
   </div>
 
@@ -848,7 +860,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220000';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220100';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -1016,6 +1028,8 @@ function initPF(){
   const _vn=localStorage.getItem('tm_vendedor_nombre');
   const _vField=document.getElementById('pf-vend');
   if(_vn&&_vField) _vField.value=_vn;
+  // Reset Jefe de Pista
+  setJefePistaForm('');
   document.getElementById('pf-desc').value='0';
   document.getElementById('pf-isv').value='15';
   document.getElementById('pf-mon').value='HNL';
@@ -1029,6 +1043,56 @@ function initPF(){
 }
 function resetPF(){ if(confirm('¿Limpiar la proforma actual?')){ pfActual.editMode=false; initPF(); } }
 function nuevaLimpia(){ pfActual.editMode=false; initPF(); }
+
+// ══════════════════════════════════════════
+//  JEFE DE PISTA — helpers del formulario
+// ══════════════════════════════════════════
+function onChangeJefePista(){
+  const sel=document.getElementById('pf-jefe');
+  const otro=document.getElementById('pf-jefe-otro');
+  if(!sel||!otro) return;
+  if(sel.value==='__otro__'){
+    otro.style.display='';
+    otro.focus();
+  } else {
+    otro.style.display='none';
+    otro.value='';
+  }
+}
+
+// Lee el valor seleccionado (trim). Si está en "Otro", usa el input de texto.
+function leerJefePistaForm(){
+  const sel=document.getElementById('pf-jefe');
+  const otro=document.getElementById('pf-jefe-otro');
+  if(!sel) return '';
+  if(sel.value==='__otro__'){
+    return (otro&&otro.value||'').trim();
+  }
+  return sel.value||'';
+}
+
+// Establece el valor en el formulario: si coincide con una opción fija, la selecciona;
+// si es vacío, resetea; si no, entra a modo "Otro".
+function setJefePistaForm(valor){
+  const sel=document.getElementById('pf-jefe');
+  const otro=document.getElementById('pf-jefe-otro');
+  if(!sel||!otro) return;
+  const v=(valor||'').trim();
+  const fijas=['Juan Carlos','Javier Alvarado'];
+  if(!v){
+    sel.value='';
+    otro.style.display='none';
+    otro.value='';
+  } else if(fijas.indexOf(v)>=0){
+    sel.value=v;
+    otro.style.display='none';
+    otro.value='';
+  } else {
+    sel.value='__otro__';
+    otro.style.display='';
+    otro.value=v;
+  }
+}
 
 // ══════════════════════════════════════════
 //  SUGERENCIAS
@@ -1522,6 +1586,7 @@ async function guardarPF(){
     fecha: document.getElementById('pf-fecha').value,
     vence: document.getElementById('pf-vence').value,
     vendedor:document.getElementById('pf-vend').value,
+    jefePista:leerJefePistaForm(),
     moneda:document.getElementById('pf-mon').value,
     cli:{nom, id:''},
     veh:{placa, ma:document.getElementById('veh-ma').value, mo:document.getElementById('veh-mo').value,
@@ -1538,6 +1603,10 @@ async function guardarPF(){
   updStats();
   document.getElementById('pf-num').textContent='PROFORMA N° '+pf.num;
   document.getElementById('pf-title').textContent='Modificar Proforma';
+  // Advertencia si no hay Jefe de Pista asignado (no bloquea, solo avisa)
+  if(!pf.jefePista){
+    toast('⚠️ Proforma guardada sin Jefe de Pista asignado','err');
+  }
   toast('⏳ Guardando proforma N° '+pf.num+'...','ok');
   const ok=await syncPFtoSheet(pf);
   if(ok) toast(`✅ Proforma N° ${pf.num} guardada en Sheets`,'ok');
@@ -1571,6 +1640,7 @@ function recuperarPF(id){
   document.getElementById('veh-a').value     =pf.veh.a||'';
   document.getElementById('veh-km').value    =pf.veh.km||'';
   document.getElementById('pf-vend').value   =pf.vendedor||'';
+  setJefePistaForm(pf.jefePista||'');
   document.getElementById('pf-fecha').value  =pf.fecha||'';
   document.getElementById('pf-vence').value  =pf.vence||'';
   document.getElementById('pf-desc').value   =pf.descuento||0;
@@ -1757,20 +1827,6 @@ function renderDash(){
     const vend=p.vendedor?p.vendedor.trim().split(/\s+/).map(function(w){return w.charAt(0).toUpperCase();}).join(''):'—';
     const veh=[p.veh.ma,p.veh.mo,p.veh.a].filter(Boolean).join(' ')||'—';
     const mon=(p.moneda==='USD'?'$':'L')+' '+fmt(p.total);
-    // Badge de Jefe de Pista (clickeable)
-    const jp=p.jefePista||'';
-    let jpIni='—';
-    if(jp){
-      // Iniciales: primera letra de cada palabra (máx 3)
-      jpIni=jp.trim().split(/\s+/).slice(0,3).map(function(w){return w.charAt(0).toUpperCase();}).join('');
-    }
-    const jpStyle=jp
-      ? 'background:#fef3c7;color:#92400e;border:1px solid #d97706;font-weight:700'
-      : 'background:var(--s2);color:var(--mu);border:1px dashed var(--b1)';
-    const jpCell='<button class="btn bsm" onclick="asignarJefePistaDesdeListas(\''+p.id+'\',event)" '
-      +'title="'+(jp?'Asignado a '+jp+' — clic para cambiar':'Asignar Jefe de Pista')+'" '
-      +'style="'+jpStyle+';font-size:10px;padding:2px 7px;min-height:22px;border-radius:4px">'
-      +jpIni+'</button>';
     const accion=esAut
       ?'<button class="btn bgh bsm" onclick="finalizarPF(\''+p.id+'\')" style="color:var(--gr);border-color:var(--gr)">Finalizar</button>'
       :'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>';
@@ -1798,7 +1854,6 @@ function renderDash(){
       +'<td>'+(p.cli.nom||'—')+'</td>'
       +'<td>'+veh+'</td>'
       +'<td>'+(p.veh.placa||'—')+'</td>'
-      +'<td style="text-align:center">'+jpCell+'</td>'
       +'<td style="color:var(--gold);font-weight:700;white-space:nowrap">'+mon+'</td>'
       +'<td><div class="flex" style="gap:4px">'+accion
       +btnArchivar
@@ -1812,7 +1867,7 @@ function renderDash(){
     +'<span style="font-size:13px;color:var(--mu)">'+list.length+' cotizacion'+(list.length!==1?'es':'')+'</span>'
     +'<span style="font-size:13px;color:var(--gr);font-weight:600">✓ '+autHoy+' autorizada'+(autHoy!==1?'s':'')+'</span>'
     +'</div>'
-    +'<table><thead><tr><th>N°</th><th>Hora</th><th>Vend.</th><th>Cliente</th><th>Vehículo</th><th>Placa</th><th title="Jefe de Pista">Jefe</th><th>Total</th><th></th></tr></thead>'
+    +'<table><thead><tr><th>N°</th><th>Hora</th><th>Vend.</th><th>Cliente</th><th>Vehículo</th><th>Placa</th><th>Total</th><th></th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table>';
 }
 
