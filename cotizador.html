@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="version" content="202604212100">
+<meta name="version" content="202604212200">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr80'){
+        if(marker !== 'pr81'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr80');
+    localStorage.setItem('tm_sw_version', 'pr81');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604212100-pr80';
+    const VERSION = '202604212200-pr81';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -848,7 +848,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604212100';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604212200';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -3121,10 +3121,10 @@ function imprimirOrdenTrabajo(){
 +'.info .lbl{font-weight:bold;color:#555;font-size:7.5pt;text-transform:uppercase;white-space:nowrap}'
 +'.info .val{flex:1;border-bottom:1px dotted #aaa;padding-bottom:0;min-height:11px;font-weight:500}'
 +'.control{display:grid;grid-template-columns:2fr 1fr 1fr;gap:4px 10px;'
-+  'border:1px solid #999;padding:3px 7px;margin-bottom:3px;font-size:8.5pt;background:#fafafa}'
++  'border:1.5px solid #d97706;padding:4px 8px;margin-bottom:3px;font-size:8.5pt;background:#fef3c7}'
 +'.control .f{display:flex;gap:4px;align-items:baseline}'
-+'.control .lbl{font-weight:bold;color:#8b0000;font-size:7.5pt;text-transform:uppercase;white-space:nowrap}'
-+'.control .val{flex:1;border-bottom:1px solid #888;padding-bottom:0;min-height:12px}'
++'.control .lbl{font-weight:bold;color:#92400e;font-size:7.5pt;text-transform:uppercase;white-space:nowrap}'
++'.control .val{flex:1;border-bottom:1px solid #92400e;padding-bottom:0;min-height:12px}'
 +'.section-title{background:#8b0000;color:#fff;padding:1.5px 7px;font-size:8pt;'
 +  'font-weight:bold;letter-spacing:.8px;margin-top:3px}'
 +'table{width:100%;border-collapse:collapse}'
@@ -3138,7 +3138,7 @@ function imprimirOrdenTrabajo(){
 +'td.desc .cod{color:#8b0000;font-weight:bold;font-size:8pt}'
 +'td.cant{width:38px;text-align:center;font-weight:bold}'
 +'td.ini{width:55px;background:#fcfcfc}'
-+'td.hora{width:45px;background:#fcfcfc;font-size:8pt}'
++'td.hora{width:45px;background:#fcfcfc;font-size:9pt}'
 +'.hallazgos{margin-top:3px;border:1px solid #999;padding:3px 6px}'
 +'.hallazgos .t{font-size:7.5pt;font-weight:bold;color:#8b0000;text-transform:uppercase;margin-bottom:1px}'
 +'.hallazgos .ln{border-bottom:1px solid #bbb;height:11px;margin-bottom:1px}'
@@ -3150,7 +3150,7 @@ function imprimirOrdenTrabajo(){
 +'.obs{margin-top:3px;border:1px solid #999;padding:3px 6px}'
 +'.obs .t{font-size:7.5pt;font-weight:bold;color:#555;text-transform:uppercase;margin-bottom:1px}'
 +'.obs .ln{border-bottom:1px solid #bbb;height:11px;margin-bottom:1px}'
-+'.firmas{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;margin-top:14px;padding:0 10px}'
++'.firmas{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;margin-top:22px;padding:0 10px}'
 +'.firma{text-align:center}'
 +'.firma .linea{border-top:1.5px solid #333;margin-bottom:2px;height:32px}'
 +'.firma .cargo{font-size:9pt;font-weight:bold;text-transform:uppercase;color:#8b0000}'
@@ -3184,7 +3184,7 @@ function imprimirOrdenTrabajo(){
 +  '<div class="f"><span class="lbl">Año:</span><span class="val">'+h(veh.a||'')+'</span></div>'
 +  '<div class="f"><span class="lbl">Placa:</span><span class="val">'+h(veh.placa||'')+'</span></div>'
 +  '<div class="f"><span class="lbl">Modelo:</span><span class="val">'+h(veh.mo||'')+'</span></div>'
-+  '<div class="f"><span class="lbl">Km:</span><span class="val">'+h(veh.km||'')+'</span></div>'
++  '<div class="f"><span class="lbl">Fecha:</span><span class="val">'+fechaHoy+'</span></div>'
 +'</div>'
 +'<div class="control">'
 +  '<div class="f"><span class="lbl">Mecánico Asignado:</span><span class="val"></span></div>'
@@ -3197,20 +3197,20 @@ function imprimirOrdenTrabajo(){
   if(servs.length){
     body+='<div class="section-title">SERVICIOS / TRABAJOS A REALIZAR</div>'
       +'<table>'
-      +'<thead><tr><th class="chk">✓</th><th class="num">#</th><th>Descripción</th><th class="cant">Cant.</th><th class="ini">Iniciales</th><th class="hora">Hora</th></tr></thead>'
+      +'<thead><tr><th class="chk">✓</th><th class="num">#</th><th>Descripción</th><th class="cant">Cant.</th><th class="ini">Iniciales</th><th class="hora">H. Fin</th></tr></thead>'
       +'<tbody>'+filasServ+'</tbody></table>';
   }
 
   if(prods.length){
     body+='<div class="section-title">PRODUCTOS / REPUESTOS A INSTALAR</div>'
       +'<table>'
-      +'<thead><tr><th class="chk">✓</th><th class="num">#</th><th>Descripción</th><th class="cant">Cant.</th><th class="ini">Iniciales</th><th class="hora">Hora</th></tr></thead>'
+      +'<thead><tr><th class="chk">✓</th><th class="num">#</th><th>Descripción</th><th class="cant">Cant.</th><th class="ini">Iniciales</th><th class="hora">H. Fin</th></tr></thead>'
       +'<tbody>'+filasProd+'</tbody></table>';
   }
 
   body+='<div class="hallazgos">'
     +'<div class="t">🔍 Hallazgos / Diagnóstico adicional</div>'
-    +'<div class="ln"></div><div class="ln"></div>'
+    +'<div class="ln"></div><div class="ln"></div><div class="ln"></div>'
   +'</div>'
   +'<div class="checklist">'
     +'<div class="t">✓ Checklist de entrega</div>'
