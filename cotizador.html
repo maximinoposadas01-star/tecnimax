@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="version" content="202604212200">
+<meta name="version" content="202604220000">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr81'){
+        if(marker !== 'pr83'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr81');
+    localStorage.setItem('tm_sw_version', 'pr83');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604212200-pr81';
+    const VERSION = '202604220000-pr83';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -848,7 +848,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604212200';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220000';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -1757,6 +1757,20 @@ function renderDash(){
     const vend=p.vendedor?p.vendedor.trim().split(/\s+/).map(function(w){return w.charAt(0).toUpperCase();}).join(''):'—';
     const veh=[p.veh.ma,p.veh.mo,p.veh.a].filter(Boolean).join(' ')||'—';
     const mon=(p.moneda==='USD'?'$':'L')+' '+fmt(p.total);
+    // Badge de Jefe de Pista (clickeable)
+    const jp=p.jefePista||'';
+    let jpIni='—';
+    if(jp){
+      // Iniciales: primera letra de cada palabra (máx 3)
+      jpIni=jp.trim().split(/\s+/).slice(0,3).map(function(w){return w.charAt(0).toUpperCase();}).join('');
+    }
+    const jpStyle=jp
+      ? 'background:#fef3c7;color:#92400e;border:1px solid #d97706;font-weight:700'
+      : 'background:var(--s2);color:var(--mu);border:1px dashed var(--b1)';
+    const jpCell='<button class="btn bsm" onclick="asignarJefePistaDesdeListas(\''+p.id+'\',event)" '
+      +'title="'+(jp?'Asignado a '+jp+' — clic para cambiar':'Asignar Jefe de Pista')+'" '
+      +'style="'+jpStyle+';font-size:10px;padding:2px 7px;min-height:22px;border-radius:4px">'
+      +jpIni+'</button>';
     const accion=esAut
       ?'<button class="btn bgh bsm" onclick="finalizarPF(\''+p.id+'\')" style="color:var(--gr);border-color:var(--gr)">Finalizar</button>'
       :'<button class="btn bg bsm" onclick="autorizarPF(\''+p.id+'\')">✓ Autorizar</button>';
@@ -1784,6 +1798,7 @@ function renderDash(){
       +'<td>'+(p.cli.nom||'—')+'</td>'
       +'<td>'+veh+'</td>'
       +'<td>'+(p.veh.placa||'—')+'</td>'
+      +'<td style="text-align:center">'+jpCell+'</td>'
       +'<td style="color:var(--gold);font-weight:700;white-space:nowrap">'+mon+'</td>'
       +'<td><div class="flex" style="gap:4px">'+accion
       +btnArchivar
@@ -1797,7 +1812,7 @@ function renderDash(){
     +'<span style="font-size:13px;color:var(--mu)">'+list.length+' cotizacion'+(list.length!==1?'es':'')+'</span>'
     +'<span style="font-size:13px;color:var(--gr);font-weight:600">✓ '+autHoy+' autorizada'+(autHoy!==1?'s':'')+'</span>'
     +'</div>'
-    +'<table><thead><tr><th>N°</th><th>Hora</th><th>Vend.</th><th>Cliente</th><th>Vehículo</th><th>Placa</th><th>Total</th><th></th></tr></thead>'
+    +'<table><thead><tr><th>N°</th><th>Hora</th><th>Vend.</th><th>Cliente</th><th>Vehículo</th><th>Placa</th><th title="Jefe de Pista">Jefe</th><th>Total</th><th></th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table>';
 }
 
@@ -3039,6 +3054,10 @@ function abrirSeguimiento(pfId){
 // ──────────────────────────────────────────
 //  ORDEN DE TRABAJO IMPRIMIBLE (sin precios)
 // ──────────────────────────────────────────
+// Estado del selector de Jefe de Pista (usado tanto para imprimir como para asignar desde lista)
+let _jefePistaPfId = null;
+let _jefePistaIntent = 'imprimir';  // 'imprimir' | 'asignar'
+
 function imprimirOrdenTrabajo(){
   if(!_segPfId){ toast('No hay proforma activa','err'); return; }
   const pf=proformas.find(function(p){return p.id===_segPfId;});
@@ -3050,6 +3069,141 @@ function imprimirOrdenTrabajo(){
     toast('Esta proforma no tiene productos ni servicios','err');
     return;
   }
+
+  // Mostrar selector de Jefe de Pista antes de imprimir
+  _jefePistaPfId=pf.id;
+  _jefePistaIntent='imprimir';
+  abrirSelectorJefePista(pf);
+}
+
+// Desde el panel principal: asignar Jefe sin imprimir
+function asignarJefePistaDesdeListas(pfId, ev){
+  if(ev){ ev.stopPropagation(); ev.preventDefault(); }
+  const pf=proformas.find(function(p){return p.id===pfId;});
+  if(!pf) return;
+  _jefePistaPfId=pf.id;
+  _jefePistaIntent='asignar';
+  abrirSelectorJefePista(pf);
+}
+
+// ── Modal para seleccionar Jefe de Pista antes de imprimir
+function abrirSelectorJefePista(pf){
+  const actual=pf.jefePista||'';
+  const opciones=['Juan Carlos','Javier Alvarado'];
+  const esOtro=actual && opciones.indexOf(actual)===-1;
+  const cont=document.getElementById('jefe-pista-content');
+  if(!cont) return;
+
+  // Título del modal según intent
+  const modalTitulo=document.querySelector('#modal-jefe-pista .mtitle');
+  if(modalTitulo){
+    modalTitulo.textContent=_jefePistaIntent==='imprimir'
+      ? '🖨️ Orden de Trabajo'
+      : '👤 Asignar Jefe de Pista';
+  }
+
+  // Construir DOM con API segura (sin concatenación de onclick)
+  cont.innerHTML='';
+
+  const titulo=document.createElement('div');
+  titulo.style.cssText='font-size:13px;font-weight:600;margin-bottom:10px;color:var(--tx)';
+  titulo.textContent=_jefePistaIntent==='imprimir'
+    ? '¿Quién es el Jefe de Pista responsable?'
+    : '¿Quién será el Jefe de Pista para la proforma '+(pf.num||'')+'?';
+  cont.appendChild(titulo);
+
+  // Botones de opciones fijas
+  opciones.forEach(function(op){
+    const btn=document.createElement('button');
+    btn.className='btn';
+    btn.style.cssText='width:100%;margin-bottom:6px;padding:10px;text-align:left;font-size:13px;'
+      +(actual===op?'background:#fef3c7;border:2px solid #d97706;color:#92400e;font-weight:600':'background:var(--s2)');
+    btn.textContent='👤 '+op+(actual===op?'  ✓':'');
+    btn.addEventListener('click',function(){ seleccionarJefePista(op); });
+    cont.appendChild(btn);
+  });
+
+  // Si hay jefe asignado: botón para quitar
+  if(actual){
+    const btnQuitar=document.createElement('button');
+    btnQuitar.className='btn bgh';
+    btnQuitar.style.cssText='width:100%;margin-bottom:6px;padding:8px;font-size:11px;color:#991b1b;border-color:#fca5a5';
+    btnQuitar.textContent='✕ Quitar asignación';
+    btnQuitar.addEventListener('click',function(){ seleccionarJefePista(''); });
+    cont.appendChild(btnQuitar);
+  }
+
+  // Separador + campo "Otro"
+  const sep=document.createElement('div');
+  sep.style.cssText='margin-top:10px;padding-top:10px;border-top:1px solid var(--b1)';
+  const lbl=document.createElement('label');
+  lbl.style.cssText='font-size:11px;color:var(--mu);font-weight:600';
+  lbl.textContent='O escribir otro nombre:';
+  sep.appendChild(lbl);
+
+  const input=document.createElement('input');
+  input.type='text';
+  input.id='jefe-otro-input';
+  input.placeholder='Ej: Roberto Méndez';
+  input.value=esOtro?String(actual):'';
+  input.style.cssText='width:100%;padding:8px;margin-top:4px;border:1px solid var(--b1);border-radius:6px;font-size:13px';
+  sep.appendChild(input);
+
+  const btnOtro=document.createElement('button');
+  btnOtro.className='btn bg';
+  btnOtro.style.cssText='width:100%;margin-top:6px;padding:8px;font-size:12px';
+  btnOtro.textContent='✓ Usar este nombre';
+  btnOtro.addEventListener('click',seleccionarJefePistaOtro);
+  sep.appendChild(btnOtro);
+
+  cont.appendChild(sep);
+
+  // Footer: cancelar
+  const footer=document.createElement('div');
+  footer.style.cssText='margin-top:12px;text-align:right';
+  const btnCancel=document.createElement('button');
+  btnCancel.className='btn bgh';
+  btnCancel.style.cssText='font-size:12px';
+  btnCancel.textContent='Cancelar';
+  btnCancel.addEventListener('click',function(){ cerrarModal('modal-jefe-pista'); });
+  footer.appendChild(btnCancel);
+  cont.appendChild(footer);
+
+  document.getElementById('modal-jefe-pista').classList.add('on');
+}
+
+function seleccionarJefePista(nombre){
+  if(!_jefePistaPfId) return;
+  const pf=proformas.find(function(p){return p.id===_jefePistaPfId;});
+  if(!pf) return;
+  if(nombre) pf.jefePista=nombre;
+  else delete pf.jefePista;
+  // Guardar en Sheets en segundo plano
+  try{ syncPFtoSheet(pf); }catch(e){ console.warn('[jefePista] sync falló:',e); }
+  cerrarModal('modal-jefe-pista');
+
+  // Según intent: imprimir o solo refrescar lista
+  if(_jefePistaIntent==='imprimir'){
+    generarOrdenTrabajoHTML(pf);
+  } else {
+    // Asignación desde lista: refrescar dashboard
+    try{ renderDash(); }catch(e){}
+    toast(nombre?'✓ Asignado a '+nombre:'Asignación eliminada','ok');
+  }
+}
+
+function seleccionarJefePistaOtro(){
+  const input=document.getElementById('jefe-otro-input');
+  if(!input) return;
+  const nombre=(input.value||'').trim();
+  if(!nombre){ toast('Escribe un nombre','err'); return; }
+  seleccionarJefePista(nombre);
+}
+
+// ── Genera el HTML imprimible y abre ventana
+function generarOrdenTrabajoHTML(pf){
+  const prods=(pf.prods||[]);
+  const servs=(pf.servs||[]);
 
   // Escape HTML helper
   function h(s){
@@ -3187,7 +3341,7 @@ function imprimirOrdenTrabajo(){
 +  '<div class="f"><span class="lbl">Fecha:</span><span class="val">'+fechaHoy+'</span></div>'
 +'</div>'
 +'<div class="control">'
-+  '<div class="f"><span class="lbl">Mecánico Asignado:</span><span class="val"></span></div>'
++  '<div class="f"><span class="lbl">Jefe de Pista:</span><span class="val" style="font-weight:700;color:#92400e">'+h(pf.jefePista||'')+'</span></div>'
 +  '<div class="f"><span class="lbl">Hora Inicio:</span><span class="val"></span></div>'
 +  '<div class="f"><span class="lbl">Hora Fin:</span><span class="val"></span></div>'
 +'</div>';
@@ -4011,6 +4165,14 @@ async function prEliminar(id){
       <button class="btn br" id="btn-orden-trabajo" onclick="imprimirOrdenTrabajo()" style="background:#1e40af;color:#fff;font-size:12px">🖨️ Orden de Trabajo</button>
       <button class="btn bgh" onclick="cerrarModal('modal-seguimiento')">Cerrar</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal seleccionar Jefe de Pista -->
+<div class="mbg" id="modal-jefe-pista">
+  <div class="modal" style="max-width:420px">
+    <div class="mtitle">🖨️ Orden de Trabajo</div>
+    <div id="jefe-pista-content"></div>
   </div>
 </div>
 
