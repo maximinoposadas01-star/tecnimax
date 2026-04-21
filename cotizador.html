@@ -3030,7 +3030,188 @@ function abrirSeguimiento(pfId){
   _segPfId=pfId;
   document.getElementById('seg-titulo').textContent='📦 '+pf.num+' — '+(pf.veh.ma||'')+' '+(pf.veh.mo||'')+' '+(pf.veh.a||'');
   renderSeguimiento(pf);
+  // Mostrar botón Orden de Trabajo (solo para proformas)
+  const btnOT=document.getElementById('btn-orden-trabajo');
+  if(btnOT) btnOT.style.display='';
   document.getElementById('modal-seguimiento').classList.add('on');
+}
+
+// ──────────────────────────────────────────
+//  ORDEN DE TRABAJO IMPRIMIBLE (sin precios)
+// ──────────────────────────────────────────
+function imprimirOrdenTrabajo(){
+  if(!_segPfId){ toast('No hay proforma activa','err'); return; }
+  const pf=proformas.find(function(p){return p.id===_segPfId;});
+  if(!pf){ toast('Proforma no encontrada','err'); return; }
+
+  const prods=(pf.prods||[]);
+  const servs=(pf.servs||[]);
+  if(!prods.length && !servs.length){
+    toast('Esta proforma no tiene productos ni servicios','err');
+    return;
+  }
+
+  // Escape HTML helper
+  function h(s){
+    return String(s==null?'':s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  // Fecha actual formateada dd/mm/yyyy
+  const hoy=new Date();
+  const pad=function(n){return String(n).padStart(2,'0');};
+  const fechaHoy=pad(hoy.getDate())+'/'+pad(hoy.getMonth()+1)+'/'+hoy.getFullYear();
+
+  // Construir filas de servicios
+  let filasServ='';
+  servs.forEach(function(s,i){
+    const cant=Number(s.cantidad||1);
+    const cantTxt=cant===Math.floor(cant)?String(cant):cant.toFixed(2);
+    filasServ+='<tr>'
+      +'<td class="chk"><div class="box"></div></td>'
+      +'<td class="num">'+(i+1)+'</td>'
+      +'<td class="desc">'+h(s.desc||s.cod||'—')+'</td>'
+      +'<td class="cant">'+cantTxt+'</td>'
+      +'</tr>';
+  });
+
+  // Construir filas de productos
+  let filasProd='';
+  prods.forEach(function(p,i){
+    const cant=Number(p.cantidad||1);
+    const cantTxt=cant===Math.floor(cant)?String(cant):cant.toFixed(2);
+    const cod=p.cod?'<span class="cod">['+h(p.cod)+']</span> ':'';
+    filasProd+='<tr>'
+      +'<td class="chk"><div class="box"></div></td>'
+      +'<td class="num">'+(i+1)+'</td>'
+      +'<td class="desc">'+cod+h(p.desc||'—')+'</td>'
+      +'<td class="cant">'+cantTxt+'</td>'
+      +'</tr>';
+  });
+
+  const veh=pf.veh||{};
+  const cli=pf.cli||{};
+
+  const html=''
++'<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
++'<title>Orden de Trabajo '+h(pf.num)+'</title>'
++'<style>'
++'@page{size:letter;margin:12mm 14mm}'
++'*{box-sizing:border-box;margin:0;padding:0}'
++'body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11pt;line-height:1.35}'
++'.wrap{max-width:190mm;margin:0 auto}'
++'header{display:flex;justify-content:space-between;align-items:flex-start;'
++  'border-bottom:3px double #8b0000;padding-bottom:8px;margin-bottom:12px}'
++'.logo{font-family:Georgia,"Times New Roman",serif;font-size:32pt;font-weight:bold;'
++  'color:#8b0000;letter-spacing:3px;line-height:1}'
++'.logo .sub{display:block;font-family:Arial,sans-serif;font-size:9pt;font-weight:normal;'
++  'letter-spacing:4px;color:#444;margin-top:2px}'
++'.folio{text-align:right;border:2px solid #8b0000;padding:6px 12px;border-radius:4px}'
++'.folio .label{font-size:8pt;color:#8b0000;font-weight:bold;letter-spacing:1px}'
++'.folio .num{font-size:22pt;font-weight:bold;color:#8b0000;line-height:1}'
++'.folio .fecha{font-size:9pt;color:#444;margin-top:3px}'
++'h1{font-size:13pt;text-align:center;margin:4px 0 10px;padding:5px;'
++  'background:#f5f5f5;border:1px solid #ccc;letter-spacing:2px}'
++'.info{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;'
++  'border:1px solid #999;padding:8px 10px;margin-bottom:10px;font-size:10pt}'
++'.info .f{display:flex;gap:5px;align-items:baseline}'
++'.info .lbl{font-weight:bold;color:#555;min-width:70px;font-size:9pt;text-transform:uppercase}'
++'.info .val{flex:1;border-bottom:1px dotted #aaa;padding-bottom:1px;min-height:14px}'
++'.section-title{background:#8b0000;color:#fff;padding:4px 8px;font-size:10pt;'
++  'font-weight:bold;letter-spacing:1px;margin-top:10px}'
++'table{width:100%;border-collapse:collapse;margin-top:0}'
++'th{background:#f0f0f0;border:1px solid #999;padding:4px 6px;font-size:9pt;'
++  'text-align:left;text-transform:uppercase}'
++'td{border:1px solid #999;padding:5px 6px;font-size:10pt;vertical-align:middle}'
++'td.chk{width:28px;text-align:center}'
++'td.chk .box{width:14px;height:14px;border:1.5px solid #333;margin:0 auto;border-radius:2px}'
++'td.num{width:28px;text-align:center;color:#777;font-size:9pt}'
++'td.desc{font-weight:500}'
++'td.desc .cod{color:#8b0000;font-weight:bold;font-size:9pt}'
++'td.cant{width:55px;text-align:center;font-weight:bold}'
++'.obs{margin-top:12px;border:1px solid #999;padding:8px}'
++'.obs .t{font-size:9pt;font-weight:bold;color:#555;text-transform:uppercase;margin-bottom:4px}'
++'.obs .ln{border-bottom:1px solid #bbb;height:18px;margin-bottom:2px}'
++'.firmas{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:30px;padding-top:8px}'
++'.firma{text-align:center}'
++'.firma .linea{border-top:1px solid #333;margin-bottom:4px;height:40px}'
++'.firma .cargo{font-size:10pt;font-weight:bold;text-transform:uppercase}'
++'.firma .nombre{font-size:9pt;color:#666;margin-top:2px}'
++'.pie{text-align:center;font-size:8pt;color:#888;margin-top:14px;'
++  'padding-top:6px;border-top:1px solid #ddd}'
++'@media print{body{font-size:10pt}.no-print{display:none!important}}'
++'.barra-print{position:fixed;top:0;left:0;right:0;background:#8b0000;color:#fff;'
++  'padding:10px;text-align:center;z-index:1000}'
++'.barra-print button{background:#fff;color:#8b0000;border:0;padding:8px 20px;'
++  'font-weight:bold;border-radius:4px;cursor:pointer;margin:0 5px}'
++'</style></head><body>'
++'<div class="barra-print no-print">'
++  '<button onclick="window.print()">🖨️ Imprimir</button>'
++  '<button onclick="window.close()">✕ Cerrar</button>'
++'</div>'
++'<div class="wrap" style="margin-top:50px">'
++'<header>'
++  '<div class="logo">TECNIMAX<span class="sub">TALLER · REPUESTOS</span></div>'
++  '<div class="folio">'
++    '<div class="label">ORDEN N°</div>'
++    '<div class="num">'+h(pf.num)+'</div>'
++    '<div class="fecha">'+fechaHoy+'</div>'
++  '</div>'
++'</header>'
++'<h1>ORDEN DE TRABAJO</h1>'
++'<div class="info">'
++  '<div class="f"><span class="lbl">Cliente:</span><span class="val">'+h(cli.nom||'')+'</span></div>'
++  '<div class="f"><span class="lbl">Placa:</span><span class="val">'+h(veh.placa||'')+'</span></div>'
++  '<div class="f"><span class="lbl">Marca:</span><span class="val">'+h(veh.ma||'')+'</span></div>'
++  '<div class="f"><span class="lbl">Modelo:</span><span class="val">'+h(veh.mo||'')+'</span></div>'
++  '<div class="f"><span class="lbl">Año:</span><span class="val">'+h(veh.a||'')+'</span></div>'
++  '<div class="f"><span class="lbl">Km:</span><span class="val">'+h(veh.km||'')+'</span></div>'
++'</div>';
+
+  let body=html;
+
+  if(servs.length){
+    body+='<div class="section-title">SERVICIOS / TRABAJOS A REALIZAR</div>'
+      +'<table>'
+      +'<thead><tr><th class="chk">✓</th><th class="num">#</th><th>Descripción</th><th class="cant">Cant.</th></tr></thead>'
+      +'<tbody>'+filasServ+'</tbody></table>';
+  }
+
+  if(prods.length){
+    body+='<div class="section-title">PRODUCTOS / REPUESTOS A INSTALAR</div>'
+      +'<table>'
+      +'<thead><tr><th class="chk">✓</th><th class="num">#</th><th>Descripción</th><th class="cant">Cant.</th></tr></thead>'
+      +'<tbody>'+filasProd+'</tbody></table>';
+  }
+
+  body+='<div class="obs">'
+    +'<div class="t">Observaciones del mecánico</div>'
+    +'<div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div>'
+  +'</div>'
+  +'<div class="firmas">'
+    +'<div class="firma">'
+      +'<div class="linea"></div>'
+      +'<div class="cargo">Firma del Mecánico</div>'
+      +'<div class="nombre">Nombre: ___________________________</div>'
+    +'</div>'
+    +'<div class="firma">'
+      +'<div class="linea"></div>'
+      +'<div class="cargo">Jefe de Taller</div>'
+      +'<div class="nombre">Visto bueno / Control de calidad</div>'
+    +'</div>'
+  +'</div>'
+  +'<div class="pie">TECNIMAX · Orden de Trabajo '+h(pf.num)+' · Generada '+fechaHoy+'</div>'
+  +'</div>'
+  +'<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},300);});<\/script>'
+  +'</body></html>';
+
+  // Abrir ventana nueva con el documento
+  const w=window.open('','_blank','width=900,height=1100');
+  if(!w){ toast('Habilita ventanas emergentes para imprimir','err'); return; }
+  w.document.open();
+  w.document.write(body);
+  w.document.close();
 }
 
 function renderSeguimiento(pf){
@@ -3604,6 +3785,9 @@ function abrirDetallePR(id){
   html+='</div>';
 
   content.innerHTML=html;
+  // Ocultar botón Orden de Trabajo (no aplica a Pedidos Rápidos)
+  const btnOT=document.getElementById('btn-orden-trabajo');
+  if(btnOT) btnOT.style.display='none';
   document.getElementById('modal-seguimiento').classList.add('on');
 }
 
@@ -3777,7 +3961,8 @@ async function prEliminar(id){
   <div class="modal" style="max-width:620px">
     <div class="mtitle" id="seg-titulo">Seguimiento de productos</div>
     <div id="seg-content"></div>
-    <div style="margin-top:16px;text-align:right">
+    <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <button class="btn br" id="btn-orden-trabajo" onclick="imprimirOrdenTrabajo()" style="background:#1e40af;color:#fff;font-size:12px">🖨️ Orden de Trabajo</button>
       <button class="btn bgh" onclick="cerrarModal('modal-seguimiento')">Cerrar</button>
     </div>
   </div>
