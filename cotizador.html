@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="version" content="202604161735">
+<meta name="version" content="202604211900">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr76'){
+        if(marker !== 'pr78'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr76');
+    localStorage.setItem('tm_sw_version', 'pr78');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604182100-pr76';
+    const VERSION = '202604211900-pr78';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -848,7 +848,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604161735';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604211900';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -3097,50 +3097,48 @@ function imprimirOrdenTrabajo(){
 +'<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
 +'<title>Orden de Trabajo '+h(pf.num)+'</title>'
 +'<style>'
-+'@page{size:letter;margin:12mm 14mm}'
++'@page{size:letter;margin:8mm 10mm}'
 +'*{box-sizing:border-box;margin:0;padding:0}'
-+'body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11pt;line-height:1.35}'
-+'.wrap{max-width:190mm;margin:0 auto}'
-+'header{display:flex;justify-content:space-between;align-items:flex-start;'
-+  'border-bottom:3px double #8b0000;padding-bottom:8px;margin-bottom:12px}'
-+'.logo{font-family:Georgia,"Times New Roman",serif;font-size:32pt;font-weight:bold;'
-+  'color:#8b0000;letter-spacing:3px;line-height:1}'
-+'.logo .sub{display:block;font-family:Arial,sans-serif;font-size:9pt;font-weight:normal;'
-+  'letter-spacing:4px;color:#444;margin-top:2px}'
-+'.folio{text-align:right;border:2px solid #8b0000;padding:6px 12px;border-radius:4px}'
-+'.folio .label{font-size:8pt;color:#8b0000;font-weight:bold;letter-spacing:1px}'
-+'.folio .num{font-size:22pt;font-weight:bold;color:#8b0000;line-height:1}'
-+'.folio .fecha{font-size:9pt;color:#444;margin-top:3px}'
-+'h1{font-size:13pt;text-align:center;margin:4px 0 10px;padding:5px;'
-+  'background:#f5f5f5;border:1px solid #ccc;letter-spacing:2px}'
-+'.info{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;'
-+  'border:1px solid #999;padding:8px 10px;margin-bottom:10px;font-size:10pt}'
-+'.info .f{display:flex;gap:5px;align-items:baseline}'
-+'.info .lbl{font-weight:bold;color:#555;min-width:70px;font-size:9pt;text-transform:uppercase}'
-+'.info .val{flex:1;border-bottom:1px dotted #aaa;padding-bottom:1px;min-height:14px}'
-+'.section-title{background:#8b0000;color:#fff;padding:4px 8px;font-size:10pt;'
-+  'font-weight:bold;letter-spacing:1px;margin-top:10px}'
-+'table{width:100%;border-collapse:collapse;margin-top:0}'
-+'th{background:#f0f0f0;border:1px solid #999;padding:4px 6px;font-size:9pt;'
++'body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:9.5pt;line-height:1.2}'
++'.wrap{max-width:195mm;margin:0 auto}'
++'header{display:flex;justify-content:space-between;align-items:center;'
++  'border-bottom:2px double #8b0000;padding-bottom:4px;margin-bottom:6px}'
++'.logo{font-family:Georgia,"Times New Roman",serif;font-size:20pt;font-weight:bold;'
++  'color:#8b0000;letter-spacing:2px;line-height:1}'
++'.logo .sub{display:block;font-family:Arial,sans-serif;font-size:7pt;font-weight:normal;'
++  'letter-spacing:3px;color:#555;margin-top:1px}'
++'.folio{text-align:right;border:1.5px solid #8b0000;padding:3px 8px;border-radius:3px;line-height:1.1}'
++'.folio .label{font-size:7pt;color:#8b0000;font-weight:bold;letter-spacing:1px}'
++'.folio .num{font-size:15pt;font-weight:bold;color:#8b0000}'
++'.folio .fecha{font-size:8pt;color:#555}'
++'.info{display:grid;grid-template-columns:repeat(3,1fr);gap:2px 12px;'
++  'border:1px solid #999;padding:4px 8px;margin-bottom:5px;font-size:9pt}'
++'.info .f{display:flex;gap:4px;align-items:baseline}'
++'.info .lbl{font-weight:bold;color:#555;font-size:8pt;text-transform:uppercase;white-space:nowrap}'
++'.info .val{flex:1;border-bottom:1px dotted #aaa;padding-bottom:1px;min-height:12px;font-weight:500}'
++'.section-title{background:#8b0000;color:#fff;padding:2px 8px;font-size:8.5pt;'
++  'font-weight:bold;letter-spacing:1px;margin-top:5px}'
++'table{width:100%;border-collapse:collapse}'
++'th{background:#f0f0f0;border:1px solid #999;padding:2px 5px;font-size:8pt;'
 +  'text-align:left;text-transform:uppercase}'
-+'td{border:1px solid #999;padding:5px 6px;font-size:10pt;vertical-align:middle}'
-+'td.chk{width:28px;text-align:center}'
-+'td.chk .box{width:14px;height:14px;border:1.5px solid #333;margin:0 auto;border-radius:2px}'
-+'td.num{width:28px;text-align:center;color:#777;font-size:9pt}'
++'td{border:1px solid #999;padding:2.5px 5px;font-size:9.5pt;vertical-align:middle}'
++'td.chk{width:22px;text-align:center}'
++'td.chk .box{width:11px;height:11px;border:1.2px solid #333;margin:0 auto;border-radius:2px}'
++'td.num{width:22px;text-align:center;color:#777;font-size:8pt}'
 +'td.desc{font-weight:500}'
-+'td.desc .cod{color:#8b0000;font-weight:bold;font-size:9pt}'
-+'td.cant{width:55px;text-align:center;font-weight:bold}'
-+'.obs{margin-top:12px;border:1px solid #999;padding:8px}'
-+'.obs .t{font-size:9pt;font-weight:bold;color:#555;text-transform:uppercase;margin-bottom:4px}'
-+'.obs .ln{border-bottom:1px solid #bbb;height:18px;margin-bottom:2px}'
-+'.firmas{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:30px;padding-top:8px}'
++'td.desc .cod{color:#8b0000;font-weight:bold;font-size:8.5pt}'
++'td.cant{width:45px;text-align:center;font-weight:bold}'
++'.obs{margin-top:6px;border:1px solid #999;padding:4px 6px}'
++'.obs .t{font-size:8pt;font-weight:bold;color:#555;text-transform:uppercase;margin-bottom:2px}'
++'.obs .ln{border-bottom:1px solid #bbb;height:14px;margin-bottom:1px}'
++'.firmas{display:grid;grid-template-columns:1fr 1fr;gap:25px;margin-top:14px}'
 +'.firma{text-align:center}'
-+'.firma .linea{border-top:1px solid #333;margin-bottom:4px;height:40px}'
-+'.firma .cargo{font-size:10pt;font-weight:bold;text-transform:uppercase}'
-+'.firma .nombre{font-size:9pt;color:#666;margin-top:2px}'
-+'.pie{text-align:center;font-size:8pt;color:#888;margin-top:14px;'
-+  'padding-top:6px;border-top:1px solid #ddd}'
-+'@media print{body{font-size:10pt}.no-print{display:none!important}}'
++'.firma .linea{border-top:1px solid #333;margin-bottom:2px;height:25px}'
++'.firma .cargo{font-size:9pt;font-weight:bold;text-transform:uppercase}'
++'.firma .nombre{font-size:8pt;color:#666;margin-top:1px}'
++'.pie{text-align:center;font-size:7pt;color:#888;margin-top:8px;'
++  'padding-top:4px;border-top:1px solid #ddd}'
++'@media print{.no-print{display:none!important}}'
 +'.barra-print{position:fixed;top:0;left:0;right:0;background:#8b0000;color:#fff;'
 +  'padding:10px;text-align:center;z-index:1000}'
 +'.barra-print button{background:#fff;color:#8b0000;border:0;padding:8px 20px;'
@@ -3154,18 +3152,17 @@ function imprimirOrdenTrabajo(){
 +'<header>'
 +  '<div class="logo">TECNIMAX<span class="sub">TALLER · REPUESTOS</span></div>'
 +  '<div class="folio">'
-+    '<div class="label">ORDEN N°</div>'
++    '<div class="label">ORDEN DE TRABAJO N°</div>'
 +    '<div class="num">'+h(pf.num)+'</div>'
 +    '<div class="fecha">'+fechaHoy+'</div>'
 +  '</div>'
 +'</header>'
-+'<h1>ORDEN DE TRABAJO</h1>'
 +'<div class="info">'
 +  '<div class="f"><span class="lbl">Cliente:</span><span class="val">'+h(cli.nom||'')+'</span></div>'
-+  '<div class="f"><span class="lbl">Placa:</span><span class="val">'+h(veh.placa||'')+'</span></div>'
 +  '<div class="f"><span class="lbl">Marca:</span><span class="val">'+h(veh.ma||'')+'</span></div>'
-+  '<div class="f"><span class="lbl">Modelo:</span><span class="val">'+h(veh.mo||'')+'</span></div>'
 +  '<div class="f"><span class="lbl">Año:</span><span class="val">'+h(veh.a||'')+'</span></div>'
++  '<div class="f"><span class="lbl">Placa:</span><span class="val">'+h(veh.placa||'')+'</span></div>'
++  '<div class="f"><span class="lbl">Modelo:</span><span class="val">'+h(veh.mo||'')+'</span></div>'
 +  '<div class="f"><span class="lbl">Km:</span><span class="val">'+h(veh.km||'')+'</span></div>'
 +'</div>';
 
@@ -3187,7 +3184,7 @@ function imprimirOrdenTrabajo(){
 
   body+='<div class="obs">'
     +'<div class="t">Observaciones del mecánico</div>'
-    +'<div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div>'
+    +'<div class="ln"></div><div class="ln"></div><div class="ln"></div>'
   +'</div>'
   +'<div class="firmas">'
     +'<div class="firma">'
