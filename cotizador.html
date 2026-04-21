@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="version" content="202604220100">
+<meta name="version" content="202604220200">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr84'){
+        if(marker !== 'pr85'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr84');
+    localStorage.setItem('tm_sw_version', 'pr85');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604220100-pr84';
+    const VERSION = '202604220200-pr85';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -860,7 +860,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220100';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220200';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -1914,6 +1914,7 @@ async function generarPDF(pf){
   doc.text('Fecha: '+fFecha(pf.fecha),W-10,17,{align:'right'});
   doc.text('Fecha Vencimiento: '+fFecha(pf.vence),W-10,22,{align:'right'});
   if(pf.vendedor){ doc.setFont('helvetica','bold'); doc.text('Vendedor: '+pf.vendedor,W-10,27,{align:'right'}); }
+  if(pf.jefePista){ doc.setFont('helvetica','bold'); doc.setTextColor(146,64,14); doc.text('Jefe de Pista: '+pf.jefePista,W-10,32,{align:'right'}); doc.setTextColor(60,60,80); }
 
   // === CLIENTE — una línea compacta ===
   let y=42;
