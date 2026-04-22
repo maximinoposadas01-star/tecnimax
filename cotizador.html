@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="version" content="202604220700">
+<meta name="version" content="202604220800">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr90'){
+        if(marker !== 'pr91'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr90');
+    localStorage.setItem('tm_sw_version', 'pr91');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604220700-pr90';
+    const VERSION = '202604220800-pr91';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -860,7 +860,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220700';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220800';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -1513,7 +1513,7 @@ function renderLista(tipo){
           if(ciSort.length>1) compraHtml+=`<div style="font-size:9px;color:var(--mu)">🏪 ${ciSort[1].p} · L ${ciSort[1].c.toFixed(2)}${ciSort[1].f?' · '+ciSort[1].f:''}</div>`;
         }
       }
-      return `<div class="irow" style="grid-template-columns:1fr 60px 90px 80px 60px;${it.facturado?'opacity:.55;background:#f0fdf4':''}">
+      return `<div class="irow" style="grid-template-columns:1fr 60px 90px 80px 70px;${it.facturado?'opacity:.55;background:#f0fdf4':''}">
         <div>
           <div style="font-size:13px;font-weight:500;${it.facturado?'text-decoration:line-through':''}">
             ${it.deOrden?`<span class="ord-bd">#${it.deOrden}</span>`:''}${it.desc}${it.facturado?' <span style="background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;margin-left:4px;text-decoration:none;display:inline-block">📋 FACTURADO</span>':''}
@@ -1526,18 +1526,19 @@ function renderLista(tipo){
             style="padding:4px;text-align:center;width:100%"
             oninput="updItem('${tipo}',${i},'cantidad',this.value)">
         </div>
-        <div style="text-align:right">
+        <div style="text-align:right;position:relative">
           <input type="number" value="${it.precio.toFixed(2)}" min="0" step="0.01"
-            style="padding:4px;text-align:right;width:100%;color:var(--gold);font-weight:700"
+            style="padding:4px 4px 4px 22px;text-align:right;width:100%;color:var(--gold);font-weight:700"
             onchange="updPrecioUnit('${tipo}',${i},this.value)">
+          ${tipo==='prod'?`<button onclick="editarItemManual('${tipo}',${i})" title="Editar costo, margen y precio"
+            style="position:absolute;left:3px;top:50%;transform:translateY(-50%);background:#1e40af;color:#fff;border:0;border-radius:3px;width:18px;height:18px;font-size:10px;cursor:pointer;padding:0;line-height:1;display:flex;align-items:center;justify-content:center">✏</button>`:''}
         </div>
         <div style="text-align:right;font-size:13px;font-weight:600;color:var(--tx);padding-top:6px">
           ${mon} ${fmt(total)}
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch">
-          <button class="btn bxs" onclick="togglePFfacturado('${tipo}',${i})" style="background:${it.facturado?'#e5e7eb':'#059669'};color:${it.facturado?'#374151':'#fff'};border:0;font-size:11px;padding:5px 6px;min-height:26px" title="${it.facturado?'Desmarcar facturado':'Copiar y marcar como facturado'}">${it.facturado?'↩':'📋'}</button>
-          <button class="btn bxs" onclick="editarItemManual('${tipo}',${i})" style="background:#1e40af;color:#fff;border:0;font-size:11px;padding:5px 6px;min-height:26px" title="Editar producto (costo, margen, precio)">✏</button>
-          <button class="btn br bxs" onclick="elimItem('${tipo}',${i})" style="font-size:11px;padding:5px 6px;min-height:26px;border:1px solid var(--b1)" title="Eliminar producto">✕</button>
+        <div style="display:flex;flex-direction:row;gap:3px;align-items:center;justify-content:flex-end">
+          <button class="btn bxs" onclick="togglePFfacturado('${tipo}',${i})" style="background:${it.facturado?'#e5e7eb':'#059669'};color:${it.facturado?'#374151':'#fff'};border:0;font-size:11px;padding:4px 6px;min-height:26px;min-width:26px" title="${it.facturado?'Desmarcar facturado':'Copiar y marcar como facturado'}">${it.facturado?'↩':'📋'}</button>
+          <button class="btn br bxs" onclick="elimItem('${tipo}',${i})" style="font-size:11px;padding:4px 6px;min-height:26px;min-width:26px;border:1px solid var(--b1)" title="Eliminar">✕</button>
         </div>
       </div>`;
     }).join('')}`;
