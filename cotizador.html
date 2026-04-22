@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="version" content="202604220600">
+<meta name="version" content="202604220700">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr89'){
+        if(marker !== 'pr90'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr89');
+    localStorage.setItem('tm_sw_version', 'pr90');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604220600-pr89';
+    const VERSION = '202604220700-pr90';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -860,7 +860,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220600';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220700';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -2093,6 +2093,33 @@ async function generarPDF(pf){
     doc.text(notasLines,12,y+6);
   }
 
+  // Términos y Condiciones (lado izquierdo, en el espacio entre observaciones y firma)
+  const terminosTxt = getTerminos();
+  if (terminosTxt && terminosTxt.trim()) {
+    // Calcular dónde arranca: si hay notas, debajo de ellas; si no, arriba del cuadro
+    let tY = y + 2;
+    if (pf.notas && pf.notas.trim()) {
+      const notasLines=doc.splitTextToSize(pf.notas.trim(), bx-16);
+      tY = y + 6 + (notasLines.length * 3) + 3;  // 3mm por línea + padding
+    }
+    // Fin disponible: 14mm antes de la línea de firma (totH-10)
+    const tYFin = y + totH - 14;
+    if (tY < tYFin) {
+      doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(26,26,46);
+      doc.text('Términos y Condiciones:', 12, tY);
+      doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(80,80,100);
+      const tLines = doc.splitTextToSize(terminosTxt.trim(), bx-16);
+      // Truncar si no cabe (para no tapar la firma)
+      const lineasMax = Math.max(1, Math.floor((tYFin - tY - 2) / 2.5));
+      const tLinesFit = tLines.slice(0, lineasMax);
+      if (tLines.length > lineasMax && tLinesFit.length > 0) {
+        // marcar truncamiento en la última línea visible
+        tLinesFit[tLinesFit.length-1] = tLinesFit[tLinesFit.length-1].replace(/\s*\.?\s*$/, '…');
+      }
+      doc.text(tLinesFit, 12, tY + 3);
+    }
+  }
+
   // Firma izquierda (debajo de observaciones)
   doc.setDrawColor(120,120,140); doc.setLineWidth(.3); doc.line(12,y+totH-10,68,y+totH-10);
   doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(26,26,46);
@@ -2137,33 +2164,9 @@ async function generarPDF(pf){
   doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(80,80,100); doc.text('Total:',bx+3,ry+4);
   doc.setFontSize(13); doc.setTextColor(200,16,46); doc.text(`${mon} ${fmt(pf.total)}`,bx+69,ry+4,{align:'right'});
 
-  // === TÉRMINOS Y CONDICIONES ===
+  // === (Los Términos y Condiciones ahora se muestran en el cuadro izquierdo,
+  //      junto a Observaciones, arriba de la firma — no al pie de página)
   const fy=H-14;
-  const terminos = getTerminos();
-  if (terminos && terminos.trim()) {
-    y = y + totH + 4;
-    if (y + 20 > fy - 2) {
-      doc.addPage();
-      doc.setFillColor(200,16,46); doc.rect(0,0,W,1.5,'F');
-      y = 10;
-    }
-    doc.setDrawColor(200,200,210); doc.setLineWidth(.2); doc.line(10,y-1,W-10,y-1);
-    doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(26,26,46);
-    doc.text('TÉRMINOS Y CONDICIONES',10,y+3);
-    y += 7;
-    doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(80,80,100);
-    const tLines = doc.splitTextToSize(terminos.trim(), W - 20);
-    if (y + tLines.length * 2.5 > fy - 2) {
-      doc.addPage();
-      doc.setFillColor(200,16,46); doc.rect(0,0,W,1.5,'F');
-      y = 10;
-      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(26,26,46);
-      doc.text('TÉRMINOS Y CONDICIONES',10,y);
-      y += 4;
-      doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(80,80,100);
-    }
-    doc.text(tLines, 10, y);
-  }
 
   // === FOOTER compacto ===
   doc.setDrawColor(200,16,46); doc.setLineWidth(.4); doc.line(0,fy,W,fy);
