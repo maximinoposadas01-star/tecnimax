@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="version" content="202604220500">
+<meta name="version" content="202604220600">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr88'){
+        if(marker !== 'pr89'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr88');
+    localStorage.setItem('tm_sw_version', 'pr89');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604220500-pr88';
+    const VERSION = '202604220600-pr89';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -860,7 +860,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220500';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220600';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -2117,16 +2117,22 @@ async function generarPDF(pf){
   const b18 =todos.filter(it=>(it.isv||0)==18).reduce((s,it)=>s+it.precio*it.cantidad,0);
   const isv15=b15*0.15, isv18=b18*0.18;
 
-  if(b15>0) trow('Importe gravado 15.00% L:', `${mon} ${fmt(b15+isv15)}`);
-  if(b18>0) trow('Importe gravado 18.00% L:', `${mon} ${fmt(b18+isv18)}`);
-  if(isv15>0) trow('ISV 15.00% L:', `${mon} ${fmt(isv15)}`);
-  if(isv18>0) trow('ISV 18.00% L:', `${mon} ${fmt(isv18)}`);
+  // === Desglose fiscal estándar Honduras ===
+  // Importe gravado = base imponible (sin ISV). ISV = impuesto calculado.
+  if(b0>0)  trow('Importe Exento L:',        `${mon} ${fmt(b0)}`);
+  if(b15>0) trow('Importe Gravado 15% L:',   `${mon} ${fmt(b15)}`);
+  if(b18>0) trow('Importe Gravado 18% L:',   `${mon} ${fmt(b18)}`);
+  if(isv15>0) trow('ISV 15% L:',             `${mon} ${fmt(isv15)}`);
+  if(isv18>0) trow('ISV 18% L:',             `${mon} ${fmt(isv18)}`);
 
+  // Separador antes de subtotal
   doc.setDrawColor(180,180,200); doc.setLineWidth(.2); doc.line(bx+3,ry-2,bx+69,ry-2);
-  trow('Subtotal',`${mon} ${fmt(pf.sub)}`,true);
-  trow('Descuento',`${mon} ${fmt(pf.dv||0)}`,false,[220,38,38]);
-  trow('Impuestos',`${mon} ${fmt(isv15+isv18)}`);
+  trow('Subtotal', `${mon} ${fmt(pf.sub)}`, true);
+  if((pf.dv||0) > 0){
+    trow('Descuento', `- ${mon} ${fmt(pf.dv)}`, false, [220,38,38]);
+  }
 
+  // Línea roja + TOTAL (sin "Impuestos" duplicado)
   doc.setDrawColor(200,16,46); doc.setLineWidth(.5); doc.line(bx+3,ry-1,bx+69,ry-1);
   doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(80,80,100); doc.text('Total:',bx+3,ry+4);
   doc.setFontSize(13); doc.setTextColor(200,16,46); doc.text(`${mon} ${fmt(pf.total)}`,bx+69,ry+4,{align:'right'});
