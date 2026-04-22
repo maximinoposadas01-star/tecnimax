@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="version" content="202604220200">
+<meta name="version" content="202604220400">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,16 +37,16 @@ if('serviceWorker' in navigator){
       if(reg.active && reg.active.scriptURL){
         // Siempre desregistra al cargar la versión nueva la primera vez
         const marker = localStorage.getItem('tm_sw_version');
-        if(marker !== 'pr85'){
+        if(marker !== 'pr87'){
           reg.unregister();
         }
       }
     });
-    localStorage.setItem('tm_sw_version', 'pr85');
+    localStorage.setItem('tm_sw_version', 'pr87');
   }).catch(()=>{});
   
   const swCode = `
-    const VERSION = '202604220200-pr85';
+    const VERSION = '202604220400-pr87';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
@@ -860,7 +860,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220200';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220400';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -924,9 +924,24 @@ async function loadPFfromSheet(){
   try{
     const json=await fetchScript('action=readPF');
     if(json&&json.ok&&json.data&&json.data.length){
+      // Construir mapa de proformas locales por id antes de reemplazar
+      // para poder rescatar campos que Sheets todavía no soporta (ej: jefePista)
+      const localMap={};
+      proformas.forEach(function(lp){ if(lp&&lp.id) localMap[lp.id]=lp; });
+
       // Servidor es fuente de verdad — reemplazar completo
       proformas.length=0;
-      json.data.forEach(spf=>proformas.push(spf));
+      json.data.forEach(function(spf){
+        // Merge: rescatar campos que Sheets todavía no tiene
+        const local=localMap[spf.id];
+        if(local){
+          // jefePista: si Sheets no lo trae pero local sí, preservar
+          if(!spf.jefePista && local.jefePista){
+            spf.jefePista=local.jefePista;
+          }
+        }
+        proformas.push(spf);
+      });
       // Ordenar por número descendente siempre
       proformas.sort((a,b)=>{
         const na=parseInt(String(a.num).replace(/^[A-Z]+/i,''))||0;
@@ -1408,8 +1423,7 @@ function renderLista(tipo){
       <span></span>
     </div>
     ${arr.map((it,i)=>{
-      const conIsv=it.precio*(1+(it.isv||0)/100);
-      const total =conIsv*it.cantidad;
+      const total=it.precio*it.cantidad;  // sin ISV (el ISV se desglosa al final)
       // Buscar info de compras (últimos 2 proveedores) — solo match exacto o por código
       let compraHtml='';
       if(tipo==='prod'){
@@ -1438,9 +1452,7 @@ function renderLista(tipo){
           <div style="font-size:13px;font-weight:500;${it.facturado?'text-decoration:line-through':''}">
             ${it.deOrden?`<span class="ord-bd">#${it.deOrden}</span>`:''}${it.desc}${it.facturado?' <span style="background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;margin-left:4px;text-decoration:none;display:inline-block">📋 FACTURADO</span>':''}
           </div>
-          <div style="font-size:11px;color:var(--mu);margin-top:2px">
-            ${mon} ${fmt(it.precio)} + ${it.isv}% ISV${it.ajusteAnt?` <span style="color:var(--gold);font-weight:600">· Ajustado ${it.ajusteAnt}</span>`:''}
-          </div>
+          ${it.ajusteAnt?`<div style="font-size:10px;color:var(--gold);font-weight:600;margin-top:2px">Ajustado ${it.ajusteAnt}</div>`:''}
           ${compraHtml}
         </div>
         <div style="text-align:center">
@@ -1945,15 +1957,14 @@ async function generarPDF(pf){
     doc.text(titulo,13,y+2.5);
     y+=7;
 
-    const totSec=items.reduce((s,it)=>s+it.precio*(1+(it.isv||0)/100)*it.cantidad,0);
+    const totSec=items.reduce((s,it)=>s+it.precio*it.cantidad,0);  // sin ISV
     const descGlobal=(pf.descuento||0)>0?pf.descuento.toFixed(2)+'%':'0.00%';
 
     doc.autoTable({
       startY:y,
       head:[['CANTIDAD','Código','DESCRIPCIÓN','IMP','Desc. Y REB','UNITARIO','TOTAL']],
       body:items.map(it=>{
-        const conIsv=it.precio*(1+(it.isv||0)/100);
-        const total =conIsv*it.cantidad;
+        const total=it.precio*it.cantidad;  // sin ISV
         return[
           it.cantidad.toFixed(2)+' Unid',
           it.cod||'Unid',
