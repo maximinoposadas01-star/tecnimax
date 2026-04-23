@@ -973,7 +973,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604232200';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604232300';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -2303,41 +2303,45 @@ async function generarPDF(pf){
   const itemsRec =todosItems.filter(function(it){ return getPrioridad(it)==='rec';  });
   const itemsPrev=todosItems.filter(function(it){ return getPrioridad(it)==='prev'; });
 
-  // === RESUMEN POR PRIORIDAD (subtotales para el cliente) ===
+  // === RESUMEN POR PRIORIDAD (compacto en una sola línea) ===
   // Solo si hay más de un nivel de prioridad — si todo es del mismo nivel no aporta nada
   const nivelesUsados=[itemsCrit.length>0,itemsRec.length>0,itemsPrev.length>0].filter(Boolean).length;
   if(nivelesUsados>1){
-    // Verificar espacio (~22mm)
-    if(y+22>H-50){ doc.addPage(); y=10; }
+    // Verificar espacio (~9mm)
+    if(y+9>H-50){ doc.addPage(); y=10; }
     const totCrit=itemsCrit.reduce(function(s,it){return s+it.precio*it.cantidad;},0);
     const totRec =itemsRec.reduce(function(s,it){return s+it.precio*it.cantidad;},0);
     const totPrev=itemsPrev.reduce(function(s,it){return s+it.precio*it.cantidad;},0);
 
-    doc.setFillColor(252,252,254); doc.rect(10,y,W-20,18,'F');
-    doc.setDrawColor(200,200,210); doc.setLineWidth(.2); doc.rect(10,y,W-20,18);
-    doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(26,26,46);
-    doc.text('RESUMEN POR PRIORIDAD',13,y+4);
-    doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(100,100,120);
-    doc.text('(El cliente puede autorizar por etapas según su presupuesto)',60,y+4);
+    // Caja delgada
+    doc.setFillColor(252,252,254); doc.rect(10,y,W-20,7,'F');
+    doc.setDrawColor(200,200,210); doc.setLineWidth(.2); doc.rect(10,y,W-20,7);
 
-    let xCol=13;
-    const colW=(W-26)/3;
+    // Etiqueta a la izquierda
+    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(26,26,46);
+    doc.text('Por prioridad:',13,y+4.5);
+
+    // Los 3 totales en horizontal, cada uno con su cuadrito de color
+    let xCol=38;
     [
-      {nom:'Critico (debe hacerse ya)',     tot:totCrit, col:[220,38,38]},
-      {nom:'Recomendado (pronto)',          tot:totRec,  col:[245,158,11]},
-      {nom:'Preventivo (puede esperar)',    tot:totPrev, col:[16,185,129]}
+      {nom:'Critico',     tot:totCrit, col:[220,38,38]},
+      {nom:'Recomendado', tot:totRec,  col:[245,158,11]},
+      {nom:'Preventivo',  tot:totPrev, col:[16,185,129]}
     ].forEach(function(g){
       if(g.tot>0){
-        // Cuadrito de color a la izquierda del texto
-        doc.setFillColor(...g.col); doc.rect(xCol,y+7.5,2.5,2.5,'F');
+        // Cuadrito de color
+        doc.setFillColor(...g.col); doc.rect(xCol,y+2.8,2.2,2.2,'F');
+        // Etiqueta + monto en la misma línea
         doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(...g.col);
-        doc.text(g.nom,xCol+4,y+10);
-        doc.setFontSize(8); doc.setTextColor(40,40,60);
-        doc.text(mon+' '+fmt(g.tot),xCol,y+15);
+        doc.text(g.nom+':',xCol+3.5,y+4.5);
+        doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(40,40,60);
+        const txt=mon+' '+fmt(g.tot);
+        doc.text(txt,xCol+3.5+doc.getTextWidth(g.nom+':')+1.5,y+4.5);
+        // Avanzar al siguiente: ancho del bloque actual + separación
+        xCol+=3.5+doc.getTextWidth(g.nom+':')+1.5+doc.getTextWidth(txt)+8;
       }
-      xCol+=colW;
     });
-    y+=22;
+    y+=11;
   }
 
   // === Check space for footer section (~50mm needed) ===
