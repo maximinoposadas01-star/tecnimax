@@ -760,26 +760,56 @@ function savePF(){
 }
 // ══════════════════════════════════════════
 //  SISTEMA DE CAMBIOS PENDIENTES (anti race-condition)
-//  - _dirtyPFids: ids de proformas modificadas localmente que aún NO se confirmaron en Sheets
-//  - _dirtyPR: bandera de pedidos rápidos modificados localmente
+//  - _dirtyPFids: Map id → timestamp en que se marcó dirty (auto-expira a 10s)
+//  - _dirtyPR_ts: timestamp del último cambio local de PR (auto-expira a 10s)
 //  - _syncEnVuelo: contador de operaciones de subida en curso
 //  - _ultimoCambioLocal: timestamp del último cambio local (epoch ms)
 //  El auto-sync se SALTA mientras haya algo en vuelo o un cambio reciente.
+//  Los flags dirty caducan automáticamente para no quedarse pegados si una
+//  subida nunca confirma (caso: red caída, cierre de pestaña, error servidor).
 // ══════════════════════════════════════════
-let _dirtyPFids = new Set();
-let _dirtyPR = false;
+let _dirtyPFids = new Map();   // id → timestamp ms
+let _dirtyPR_ts = 0;           // 0 = limpio; >0 = timestamp en que se marcó dirty
 let _syncEnVuelo = 0;
 let _ultimoCambioLocal = 0;
-const VENTANA_GRACIA_MS = 5000;  // No bajar de Sheets si hubo cambio local en últimos 5s
+const VENTANA_GRACIA_MS = 3000;   // No bajar de Sheets si hubo cambio local en últimos 3s
+const DIRTY_TTL_MS      = 10000;  // Si una marca dirty no se confirma en 10s, expira
 
 function _marcarPFDirty(id){
-  if(id){ _dirtyPFids.add(id); _ultimoCambioLocal = Date.now(); }
+  if(id){ _dirtyPFids.set(id, Date.now()); _ultimoCambioLocal = Date.now(); }
 }
 function _marcarPRDirty(){
-  _dirtyPR = true; _ultimoCambioLocal = Date.now();
+  _dirtyPR_ts = Date.now(); _ultimoCambioLocal = Date.now();
+}
+function _limpiarDirtyExpirados(){
+  const ahora = Date.now();
+  // PFs expiradas
+  for(const [id, ts] of _dirtyPFids){
+    if(ahora - ts > DIRTY_TTL_MS){
+      console.warn('[dirty] PF expirada sin confirmar:', id);
+      _dirtyPFids.delete(id);
+    }
+  }
+  // PR expirado
+  if(_dirtyPR_ts && ahora - _dirtyPR_ts > DIRTY_TTL_MS){
+    console.warn('[dirty] PR expirado sin confirmar');
+    _dirtyPR_ts = 0;
+  }
+}
+function _esPFDirty(id){
+  if(!_dirtyPFids.has(id)) return false;
+  const ts = _dirtyPFids.get(id);
+  if(Date.now() - ts > DIRTY_TTL_MS){ _dirtyPFids.delete(id); return false; }
+  return true;
+}
+function _esPRDirty(){
+  if(!_dirtyPR_ts) return false;
+  if(Date.now() - _dirtyPR_ts > DIRTY_TTL_MS){ _dirtyPR_ts = 0; return false; }
+  return true;
 }
 function _hayCambiosPendientes(){
-  return _dirtyPFids.size > 0 || _dirtyPR || _syncEnVuelo > 0
+  _limpiarDirtyExpirados();
+  return _dirtyPFids.size > 0 || _dirtyPR_ts > 0 || _syncEnVuelo > 0
       || (Date.now() - _ultimoCambioLocal) < VENTANA_GRACIA_MS;
 }
 
@@ -866,9 +896,26 @@ function loadPF(){
   setTimeout(()=>updSyncIndicator(),100);
   // 2. Al iniciar: SUBIR locales primero, luego bajar de Sheets
   setTimeout(()=>sincronizarTodo(true),800);
-  // 3. Auto-sync periódico (45s). Se SALTA automáticamente si hay cambios locales en vuelo
-  //    o si hubo un cambio local en los últimos 5s (ver _hayCambiosPendientes).
-  setInterval(()=>sincronizarTodo(true),45000);
+  // 3. Auto-sync cada 20s. Se SALTA automáticamente si hay cambios locales en vuelo
+  //    o si hubo un cambio local en los últimos 3s (ver _hayCambiosPendientes).
+  setInterval(()=>sincronizarTodo(true),20000);
+
+  // 4. Cuando la pestaña vuelve a ser visible (cambio de tab, regreso al navegador),
+  //    forzar sincronización inmediata. Esto resuelve "vengo a esta PC y no veo
+  //    los cambios que hizo la otra PC mientras tanto".
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible'){
+      console.log('[visibility] pestaña visible — forzando sync');
+      sincronizarTodo(true);
+    }
+  });
+
+  // 5. Cuando la ventana recupera el foco (clic en la ventana),
+  //    también forzar sincronización.
+  window.addEventListener('focus', function(){
+    console.log('[focus] ventana enfocada — forzando sync');
+    sincronizarTodo(true);
+  });
 }
 
 // Función principal — sube locales a Sheets Y baja todo de Sheets
@@ -914,7 +961,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604231600';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604231700';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -991,9 +1038,8 @@ async function loadPFfromSheet(){
         idsServidor.add(spf.id);
         const local=localMap[spf.id];
 
-        // ⚠️ ANTI-RACE: si el local está dirty, mantener la versión local
-        // (los cambios aún no confirmados en Sheets se preservan)
-        if(local && _dirtyPFids.has(spf.id)){
+        // ⚠️ ANTI-RACE: si el local está dirty y NO ha expirado, mantener la versión local
+        if(local && _esPFDirty(spf.id)){
           console.log('[loadPF] preservando proforma dirty:', spf.id, local.num, 'estado='+local.estado);
           proformas.push(local);
           return;
@@ -1010,8 +1056,8 @@ async function loadPFfromSheet(){
 
       // También conservar cualquier PF dirty que aún NO esté en el servidor
       // (recién creada y no subida todavía)
-      _dirtyPFids.forEach(function(id){
-        if(!idsServidor.has(id) && localMap[id]){
+      _dirtyPFids.forEach(function(ts, id){
+        if(!idsServidor.has(id) && localMap[id] && _esPFDirty(id)){
           console.log('[loadPF] preservando proforma dirty no-en-servidor:', id);
           proformas.push(localMap[id]);
         }
@@ -1048,9 +1094,15 @@ function goPage(id){
   ['dash','nueva','hist','stats','imp'].forEach((n,i)=>{ if(n===id) document.querySelectorAll('.tab')[i].classList.add('on'); });
   if(id==='hist'){ loadPFfromSheet().then(()=>renderHist()); }
   if(id==='dash'){
-    loadPFfromSheet().then(async ()=>{
+    // Forzar recarga al entrar al inicio: proformas + pedidos rápidos
+    // Esto resuelve "cambio de pestaña y no veo cambios de la otra PC"
+    Promise.all([
+      loadPFfromSheet(),
+      cargarPedidosRapidos()
+    ]).then(async ()=>{
       await archivarPendientesDiaAnterior();
       renderDash();
+      renderPedidosRapidos();
       updStats();
     });
   }
@@ -3989,7 +4041,7 @@ function guardarPedidosRapidosSheet(){
   } catch(e) {
     console.error('[PR] Error guardando en localStorage:', e);
   }
-  // Marcar como dirty y contar la operación en vuelo
+  // Marcar como dirty (con timestamp para auto-expirar) y contar la operación en vuelo
   _marcarPRDirty();
   _syncEnVuelo++;
   postScript('savePedidosRapidos',{pedidos:_pedidosRapidos})
@@ -4000,7 +4052,7 @@ function guardarPedidosRapidosSheet(){
         toast('⚠️ No se sincronizó con Sheets: '+(r.error||'desconocido'),'err');
       } else {
         console.log('[PR] Guardado en Sheets OK. Saved:', r.saved);
-        _dirtyPR = false;  // confirmado en servidor
+        _dirtyPR_ts = 0;  // confirmado en servidor
       }
     })
     .catch(function(err){
@@ -4018,9 +4070,8 @@ async function cargarPedidosRapidos(){
     console.log('[PR] Carga ignorada: hay delete en vuelo ('+_prEliminandoId+')');
     return;
   }
-  // ⚠️ ANTI-RACE: si hay cambios locales pendientes, NO bajar de Sheets
-  // (la versión local tiene cambios más nuevos que el servidor todavía no tiene)
-  if(_dirtyPR){
+  // ⚠️ ANTI-RACE: si hay cambios locales pendientes (no expirados), NO bajar de Sheets
+  if(_esPRDirty()){
     console.log('[PR] Carga ignorada: hay cambios locales pendientes de subir');
     return;
   }
@@ -4035,7 +4086,7 @@ async function cargarPedidosRapidos(){
     const json=await fetchScript('action=readPedidosRapidos');
     if(json&&json.ok&&json.data){
       // Re-chequear flags antes de pisar (pudieron cambiar durante el await)
-      if(_dirtyPR){
+      if(_esPRDirty()){
         console.log('[PR] Resultado descartado: cambio local ocurrió durante la carga');
         return;
       }
