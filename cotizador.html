@@ -758,17 +758,53 @@ async function loadDBfromSheet(){
 function savePF(){
   // Noop — todo se guarda directo a Sheets via syncPFtoSheet
 }
+// ══════════════════════════════════════════
+//  SISTEMA DE CAMBIOS PENDIENTES (anti race-condition)
+//  - _dirtyPFids: ids de proformas modificadas localmente que aún NO se confirmaron en Sheets
+//  - _dirtyPR: bandera de pedidos rápidos modificados localmente
+//  - _syncEnVuelo: contador de operaciones de subida en curso
+//  - _ultimoCambioLocal: timestamp del último cambio local (epoch ms)
+//  El auto-sync se SALTA mientras haya algo en vuelo o un cambio reciente.
+// ══════════════════════════════════════════
+let _dirtyPFids = new Set();
+let _dirtyPR = false;
+let _syncEnVuelo = 0;
+let _ultimoCambioLocal = 0;
+const VENTANA_GRACIA_MS = 5000;  // No bajar de Sheets si hubo cambio local en últimos 5s
+
+function _marcarPFDirty(id){
+  if(id){ _dirtyPFids.add(id); _ultimoCambioLocal = Date.now(); }
+}
+function _marcarPRDirty(){
+  _dirtyPR = true; _ultimoCambioLocal = Date.now();
+}
+function _hayCambiosPendientes(){
+  return _dirtyPFids.size > 0 || _dirtyPR || _syncEnVuelo > 0
+      || (Date.now() - _ultimoCambioLocal) < VENTANA_GRACIA_MS;
+}
+
 // Sincronizar UNA proforma a Sheets — con retry y feedback
+// MARCA la proforma como dirty antes de empezar y la limpia solo si el servidor confirma OK.
 async function syncPFtoSheet(pf){
-  for(let intento=1;intento<=3;intento++){
-    try{
-      const r=await postScript('savePF',pf);
-      if(r&&r.ok) return true;
-    }catch(e){}
-    if(intento<3) await new Promise(r=>setTimeout(r,1000*intento));
+  if(!pf||!pf.id) return false;
+  _marcarPFDirty(pf.id);
+  _syncEnVuelo++;
+  try{
+    for(let intento=1;intento<=3;intento++){
+      try{
+        const r=await postScript('savePF',pf);
+        if(r&&r.ok){
+          _dirtyPFids.delete(pf.id);  // confirmado en servidor → ya no es dirty
+          return true;
+        }
+      }catch(e){}
+      if(intento<3) await new Promise(r=>setTimeout(r,1000*intento));
+    }
+    toast('⚠️ Error guardando en Sheets — reintenta con Sincronizar','err');
+    return false;
+  } finally {
+    _syncEnVuelo--;
   }
-  toast('⚠️ Error guardando en Sheets — reintenta con Sincronizar','err');
-  return false;
 }
 // Sincronizar TODAS las proformas a Sheets (en lotes pequeños para evitar límite de URL)
 async function syncAllPFtoSheet(){
@@ -830,8 +866,9 @@ function loadPF(){
   setTimeout(()=>updSyncIndicator(),100);
   // 2. Al iniciar: SUBIR locales primero, luego bajar de Sheets
   setTimeout(()=>sincronizarTodo(true),800);
-  // 3. Auto-sync cada 60 segundos
-  setInterval(()=>sincronizarTodo(true),30000);
+  // 3. Auto-sync periódico (45s). Se SALTA automáticamente si hay cambios locales en vuelo
+  //    o si hubo un cambio local en los últimos 5s (ver _hayCambiosPendientes).
+  setInterval(()=>sincronizarTodo(true),45000);
 }
 
 // Función principal — sube locales a Sheets Y baja todo de Sheets
@@ -839,6 +876,14 @@ async function sincronizarTodo(silencioso=false){
   const btnDash=document.getElementById('btn-sync-dash');
   const btnHist=document.getElementById('btn-sync');
   const status=document.getElementById('sync-status');
+
+  // Si es auto-sync silencioso y hay cambios locales en vuelo o ventana de gracia activa → SKIP
+  // Esto evita que el auto-sync pise un cambio reciente del usuario.
+  if(silencioso && _hayCambiosPendientes()){
+    console.log('[auto-sync] saltado — cambios locales en vuelo o recientes',
+                {dirtyPF:_dirtyPFids.size, dirtyPR:_dirtyPR, enVuelo:_syncEnVuelo});
+    return;
+  }
 
   if(!silencioso){
     if(btnDash){ btnDash.textContent='⏳...'; btnDash.disabled=true; }
@@ -848,8 +893,17 @@ async function sincronizarTodo(silencioso=false){
 
   try{
     // PASO 1: Subir todas las locales (con reducción automática de lote si la URL es muy larga)
+    // Si hay PFs dirty, asegurarnos que se suban primero (priorizadas).
     if(proformas.length>0){
-      await _syncPFenLotes(proformas.slice(), true);
+      _syncEnVuelo++;
+      try{
+        await _syncPFenLotes(proformas.slice(), true);
+        // Si la subida fue exitosa para todo, marcar todo como limpio
+        // (saveAllPF responde ok solo cuando guardó todas las proformas del lote)
+        _dirtyPFids.clear();
+      } finally {
+        _syncEnVuelo--;
+      }
     }
     // PASO 2: Bajar todo desde Sheets (incluye las de otras PCs)
     await loadPFfromSheet();
@@ -860,7 +914,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604220900';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604231600';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -929,11 +983,22 @@ async function loadPFfromSheet(){
       const localMap={};
       proformas.forEach(function(lp){ if(lp&&lp.id) localMap[lp.id]=lp; });
 
-      // Servidor es fuente de verdad — reemplazar completo
+      // Servidor es fuente de verdad — reemplazar completo,
+      // EXCEPTO las proformas dirty (modificadas localmente y pendientes de subir).
       proformas.length=0;
+      const idsServidor=new Set();
       json.data.forEach(function(spf){
-        // Merge: rescatar campos que Sheets todavía no tiene
+        idsServidor.add(spf.id);
         const local=localMap[spf.id];
+
+        // ⚠️ ANTI-RACE: si el local está dirty, mantener la versión local
+        // (los cambios aún no confirmados en Sheets se preservan)
+        if(local && _dirtyPFids.has(spf.id)){
+          console.log('[loadPF] preservando proforma dirty:', spf.id, local.num, 'estado='+local.estado);
+          proformas.push(local);
+          return;
+        }
+
         if(local){
           // jefePista: si Sheets no lo trae pero local sí, preservar
           if(!spf.jefePista && local.jefePista){
@@ -942,6 +1007,16 @@ async function loadPFfromSheet(){
         }
         proformas.push(spf);
       });
+
+      // También conservar cualquier PF dirty que aún NO esté en el servidor
+      // (recién creada y no subida todavía)
+      _dirtyPFids.forEach(function(id){
+        if(!idsServidor.has(id) && localMap[id]){
+          console.log('[loadPF] preservando proforma dirty no-en-servidor:', id);
+          proformas.push(localMap[id]);
+        }
+      });
+
       // Ordenar por número descendente siempre
       proformas.sort((a,b)=>{
         const na=parseInt(String(a.num).replace(/^[A-Z]+/i,''))||0;
@@ -3914,6 +3989,9 @@ function guardarPedidosRapidosSheet(){
   } catch(e) {
     console.error('[PR] Error guardando en localStorage:', e);
   }
+  // Marcar como dirty y contar la operación en vuelo
+  _marcarPRDirty();
+  _syncEnVuelo++;
   postScript('savePedidosRapidos',{pedidos:_pedidosRapidos})
     .then(function(r){
       if(!r){ console.error('[PR] Respuesta nula del servidor'); return; }
@@ -3922,11 +4000,15 @@ function guardarPedidosRapidosSheet(){
         toast('⚠️ No se sincronizó con Sheets: '+(r.error||'desconocido'),'err');
       } else {
         console.log('[PR] Guardado en Sheets OK. Saved:', r.saved);
+        _dirtyPR = false;  // confirmado en servidor
       }
     })
     .catch(function(err){
       console.error('[PR] Error de red al guardar:', err);
       toast('⚠️ Sin conexión con Sheets (guardado solo local)','err');
+    })
+    .finally(function(){
+      _syncEnVuelo--;
     });
 }
 
@@ -3934,6 +4016,12 @@ async function cargarPedidosRapidos(){
   // Si hay un delete en vuelo, no recargar (evita condición de carrera)
   if(_prEliminandoId){
     console.log('[PR] Carga ignorada: hay delete en vuelo ('+_prEliminandoId+')');
+    return;
+  }
+  // ⚠️ ANTI-RACE: si hay cambios locales pendientes, NO bajar de Sheets
+  // (la versión local tiene cambios más nuevos que el servidor todavía no tiene)
+  if(_dirtyPR){
+    console.log('[PR] Carga ignorada: hay cambios locales pendientes de subir');
     return;
   }
   // Cargar local primero
@@ -3946,6 +4034,11 @@ async function cargarPedidosRapidos(){
   try{
     const json=await fetchScript('action=readPedidosRapidos');
     if(json&&json.ok&&json.data){
+      // Re-chequear flags antes de pisar (pudieron cambiar durante el await)
+      if(_dirtyPR){
+        console.log('[PR] Resultado descartado: cambio local ocurrió durante la carga');
+        return;
+      }
       // Si durante la carga se inició un delete, filtrar ese id del resultado
       if(_prEliminandoId){
         _pedidosRapidos=json.data.filter(function(p){return p.id!==_prEliminandoId;});
