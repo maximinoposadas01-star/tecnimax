@@ -973,7 +973,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604232100';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604232200';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -2244,66 +2244,42 @@ async function generarPDF(pf){
     const totSec=itemsOrd.reduce((s,it)=>s+it.precio*it.cantidad,0);
     const descGlobal=(pf.descuento||0)>0?pf.descuento.toFixed(2)+'%':'0.00%';
 
-    // Construir el body insertando filas separadoras al cambiar de grupo de prioridad
-    const labelGrupo={crit:'TRABAJOS CRITICOS — Recomendados de hacer ya',
-                      rec :'TRABAJOS RECOMENDADOS — Para hacer pronto',
-                      prev:'TRABAJOS PREVENTIVOS — Pueden esperar'};
-    const body=[];
-    let prioActual=null;
-    itemsOrd.forEach(function(it){
-      const p=getPrioridad(it);
-      // Si cambia el grupo, insertar fila separadora
-      if(p!==prioActual){
-        // Subtotal del grupo
-        const totGrupo=itemsOrd.filter(function(x){return getPrioridad(x)===p;})
-                               .reduce(function(s,x){return s+x.precio*x.cantidad;},0);
-        body.push([{
-          content: labelGrupo[p]+'    ·    Subtotal: '+mon+' '+fmt(totGrupo),
-          colSpan: 8,
-          styles: {
-            fillColor: fillPrio[p],
-            textColor: txtPrio[p],
-            fontStyle: 'bold',
-            fontSize: 7.5,
-            halign: 'left',
-            cellPadding: {top:2.5, right:4, bottom:2.5, left:4}
-          }
-        }]);
-        prioActual=p;
-      }
+    // Compacto: cada fila tiene fondo de color suave según prioridad (sin columna extra ni separadores)
+    // El cliente identifica la prioridad por el color del fondo de la fila completa
+    const body=itemsOrd.map(function(it){
       const total=it.precio*it.cantidad;
-      body.push([
-        {content:labelPrio[p], styles:{fillColor:fillPrio[p], textColor:txtPrio[p], fontStyle:'bold'}},
-        it.cantidad.toFixed(2)+' Unid',
-        it.cod||'Unid',
-        it.desc,
-        (it.isv||0)>0?`${it.isv}%`:'0%',
-        descGlobal,
-        fmt(it.precio),
-        fmt(total)
-      ]);
+      const p=getPrioridad(it);
+      // Aplicar fondo de color a TODA la fila (sobreescribe alternateRowStyles)
+      const rowStyle={fillColor:fillPrio[p]};
+      return [
+        {content: it.cantidad.toFixed(2)+' Unid', styles:rowStyle},
+        {content: it.cod||'Unid',                  styles:rowStyle},
+        {content: it.desc,                          styles:rowStyle},
+        {content: (it.isv||0)>0?`${it.isv}%`:'0%', styles:rowStyle},
+        {content: descGlobal,                       styles:rowStyle},
+        {content: fmt(it.precio),                   styles:rowStyle},
+        {content: fmt(total),                       styles:Object.assign({fontStyle:'bold'},rowStyle)}
+      ];
     });
 
     doc.autoTable({
       startY:y,
-      head:[['PRIO','CANTIDAD','Código','DESCRIPCIÓN','IMP','Desc. Y REB','UNITARIO','TOTAL']],
+      head:[['CANTIDAD','Código','DESCRIPCIÓN','IMP','Desc. Y REB','UNITARIO','TOTAL']],
       body:body,
       headStyles:{fillColor:[26,26,46],textColor:[255,255,255],fontStyle:'bold',fontSize:6.5,cellPadding:2},
       bodyStyles:{fontSize:7,textColor:[40,40,60],cellPadding:1.8},
-      alternateRowStyles:{fillColor:[250,250,252]},
       styles:{fillColor:[255,255,255],lineWidth:.15,lineColor:[200,200,210],overflow:'linebreak'},
       columnStyles:{
-        0:{cellWidth:16,halign:'center',fontSize:6.5},
+        0:{cellWidth:20,halign:'center'},
         1:{cellWidth:18,halign:'center'},
-        2:{cellWidth:16,halign:'center'},
-        3:{cellWidth:'auto'},
-        4:{cellWidth:11,halign:'center'},
-        5:{cellWidth:14,halign:'center'},
-        6:{cellWidth:18,halign:'right'},
-        7:{cellWidth:18,halign:'right',fontStyle:'bold'}
+        2:{cellWidth:'auto'},
+        3:{cellWidth:12,halign:'center'},
+        4:{cellWidth:16,halign:'center'},
+        5:{cellWidth:20,halign:'right'},
+        6:{cellWidth:20,halign:'right',fontStyle:'bold'}
       },
       margin:{left:10,right:10},
-      foot:[[{content:`TOTAL ${titulo.toUpperCase()} : ${mon} ${fmt(totSec)}`,colSpan:8,
+      foot:[[{content:`TOTAL ${titulo.toUpperCase()} : ${mon} ${fmt(totSec)}`,colSpan:7,
         styles:{halign:'right',fillColor:[245,245,248],textColor:colorRGB,fontStyle:'bold',fontSize:8,
           lineColor:[200,200,210],lineWidth:.2}}]],
       didDrawPage:function(data){
