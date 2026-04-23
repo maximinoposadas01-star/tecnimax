@@ -973,7 +973,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604231900';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604232000';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -2242,23 +2242,50 @@ async function generarPDF(pf){
     const totSec=itemsOrd.reduce((s,it)=>s+it.precio*it.cantidad,0);
     const descGlobal=(pf.descuento||0)>0?pf.descuento.toFixed(2)+'%':'0.00%';
 
+    // Construir el body insertando filas separadoras al cambiar de grupo de prioridad
+    const labelGrupo={crit:'TRABAJOS CRITICOS — Recomendados de hacer ya',
+                      rec :'TRABAJOS RECOMENDADOS — Para hacer pronto',
+                      prev:'TRABAJOS PREVENTIVOS — Pueden esperar'};
+    const body=[];
+    let prioActual=null;
+    itemsOrd.forEach(function(it){
+      const p=getPrioridad(it);
+      // Si cambia el grupo, insertar fila separadora
+      if(p!==prioActual){
+        // Subtotal del grupo
+        const totGrupo=itemsOrd.filter(function(x){return getPrioridad(x)===p;})
+                               .reduce(function(s,x){return s+x.precio*x.cantidad;},0);
+        body.push([{
+          content: labelGrupo[p]+'    ·    Subtotal: '+mon+' '+fmt(totGrupo),
+          colSpan: 8,
+          styles: {
+            fillColor: fillPrio[p],
+            textColor: txtPrio[p],
+            fontStyle: 'bold',
+            fontSize: 7.5,
+            halign: 'left',
+            cellPadding: {top:2.5, right:4, bottom:2.5, left:4}
+          }
+        }]);
+        prioActual=p;
+      }
+      const total=it.precio*it.cantidad;
+      body.push([
+        {content:labelPrio[p], styles:{fillColor:fillPrio[p], textColor:txtPrio[p], fontStyle:'bold'}},
+        it.cantidad.toFixed(2)+' Unid',
+        it.cod||'Unid',
+        it.desc,
+        (it.isv||0)>0?`${it.isv}%`:'0%',
+        descGlobal,
+        fmt(it.precio),
+        fmt(total)
+      ]);
+    });
+
     doc.autoTable({
       startY:y,
       head:[['PRIO','CANTIDAD','Código','DESCRIPCIÓN','IMP','Desc. Y REB','UNITARIO','TOTAL']],
-      body:itemsOrd.map(it=>{
-        const total=it.precio*it.cantidad;
-        const p=getPrioridad(it);
-        return[
-          {content:labelPrio[p], styles:{fillColor:fillPrio[p], textColor:txtPrio[p], fontStyle:'bold'}},
-          it.cantidad.toFixed(2)+' Unid',
-          it.cod||'Unid',
-          it.desc,
-          (it.isv||0)>0?`${it.isv}%`:'0%',
-          descGlobal,
-          fmt(it.precio),
-          fmt(total)
-        ];
-      }),
+      body:body,
       headStyles:{fillColor:[26,26,46],textColor:[255,255,255],fontStyle:'bold',fontSize:6.5,cellPadding:2},
       bodyStyles:{fontSize:7,textColor:[40,40,60],cellPadding:1.8},
       alternateRowStyles:{fillColor:[250,250,252]},
