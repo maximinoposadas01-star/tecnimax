@@ -973,7 +973,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604232000';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604232100';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -2227,9 +2227,11 @@ async function generarPDF(pf){
 
   const tabla=(items,titulo,colorRGB)=>{
     if(!items.length) return;
-    // Ordenar por prioridad (crit primero, prev al final)
+    // Ordenar por prioridad (crit=0 primero, rec=1, prev=2 al final)
+    // Importante: usar ?? en vez de || porque 0 es falsy y rompía el orden de críticos
     const itemsOrd=items.slice().sort(function(a,b){
-      return (ordenPrio[getPrioridad(a)]||1) - (ordenPrio[getPrioridad(b)]||1);
+      const oa=ordenPrio[getPrioridad(a)]; const ob=ordenPrio[getPrioridad(b)];
+      return (oa==null?1:oa) - (ob==null?1:ob);
     });
 
     // Cabecera de sección
