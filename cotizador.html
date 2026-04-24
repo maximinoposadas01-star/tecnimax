@@ -1440,7 +1440,7 @@ function buscarHist(q){
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="color:var(--gold);font-weight:700;font-size:15px">${it.c} unid</div>
-          <div style="color:var(--mu2);font-size:11px">${mon} ${fmt(it.p)} c/u</div>
+          <div style="color:var(--mu2);font-size:11px">${mon} ${fmt(it.p)} c/ISV</div>
         </div>
       </div>
     </div>`).join('');
@@ -1475,7 +1475,7 @@ function abrirOrden(numOrden, itemDestacado){
         <input type="checkbox" id="oi-${i}" ${dest?'checked':''}>
         <div class="oi-d">
           <div class="oi-n">${it.d}</div>
-          <div class="oi-m">${mon} ${fmt(it.p)} sin ISV · con ISV 15%: ${mon} ${fmt(it.p*1.15)}</div>
+          <div class="oi-m">${mon} ${fmt(it.p)} c/ISV · base sin ISV: ${mon} ${fmt(it.p/1.15)}</div>
         </div>
         <div class="oi-c">${it.c} unid</div>
       </label>`;
@@ -1494,8 +1494,11 @@ function agregarSeleccionados(){
   items.forEach((it,i)=>{
     const cb=document.getElementById('oi-'+i);
     if(!cb||!cb.checked) return;
-    // Ajuste por antigüedad
-    let precio=it.p, ajustePct=0, mesesAnt=0;
+    // El precio del taller (it.p) viene CON 15% ISV incluido.
+    // El cotizador trabaja internamente con precio SIN ISV (recalc() suma el ISV al final).
+    // → Convertimos a base sin ISV dividiendo entre 1.15.
+    let precio = it.p / 1.15;
+    let ajustePct=0, mesesAnt=0;
     if(ordenActual.f){
       const fechaOrd=new Date(ordenActual.f);
       const hoy=new Date();
@@ -1503,7 +1506,7 @@ function agregarSeleccionados(){
       if(mesesAnt>12) ajustePct=15;
       else if(mesesAnt>6) ajustePct=10;
       else if(mesesAnt>3) ajustePct=5;
-      if(ajustePct>0) precio=it.p*(1+ajustePct/100);
+      if(ajustePct>0) precio=precio*(1+ajustePct/100);
     }
     const item={desc:it.d, cod:'', precio:Math.round(precio*100)/100, costo:0, ganancia:ganG,
                 cantidad:it.c, isv:isvDef, deOrden:ordenActual.n};
