@@ -771,14 +771,16 @@ function savePF(){
   // Noop — todo se guarda directo a Sheets via syncPFtoSheet
 }
 // ══════════════════════════════════════════
-//  SISTEMA DE CAMBIOS PENDIENTES (anti race-condition)
+//  SISTEMA DE CAMBIOS PENDIENTES (anti race-condition) v5.6
 //  - _dirtyPFids: Map id → timestamp en que se marcó dirty (auto-expira a 10s)
 //  - _dirtyPR_ts: timestamp del último cambio local de PR (auto-expira a 10s)
 //  - _syncEnVuelo: contador de operaciones de subida en curso
 //  - _ultimoCambioLocal: timestamp del último cambio local (epoch ms)
-//  El auto-sync se SALTA mientras haya algo en vuelo o un cambio reciente.
-//  Los flags dirty caducan automáticamente para no quedarse pegados si una
-//  subida nunca confirma (caso: red caída, cierre de pestaña, error servidor).
+//  NUEVO v5.6:
+//  - _marcarPFDirty también asigna updatedAt a la proforma (para que el
+//    servidor pueda rechazar escrituras más viejas)
+//  - sincronizarTodo solo sube proformas DIRTY, no todas (evita que datos
+//    viejos locales pisen cambios hechos en otra PC)
 // ══════════════════════════════════════════
 let _dirtyPFids = new Map();   // id → timestamp ms
 let _dirtyPR_ts = 0;           // 0 = limpio; >0 = timestamp en que se marcó dirty
@@ -788,21 +790,26 @@ const VENTANA_GRACIA_MS = 3000;   // No bajar de Sheets si hubo cambio local en 
 const DIRTY_TTL_MS      = 10000;  // Si una marca dirty no se confirma en 10s, expira
 
 function _marcarPFDirty(id){
-  if(id){ _dirtyPFids.set(id, Date.now()); _ultimoCambioLocal = Date.now(); }
+  if(!id) return;
+  const ahora = Date.now();
+  _dirtyPFids.set(id, ahora);
+  _ultimoCambioLocal = ahora;
+  // NUEVO v5.6: también escribir updatedAt en la proforma local para que
+  // el servidor pueda comparar y rechazar escrituras stale
+  const pf = proformas.find(function(x){ return x.id === id; });
+  if(pf) pf.updatedAt = ahora;
 }
 function _marcarPRDirty(){
   _dirtyPR_ts = Date.now(); _ultimoCambioLocal = Date.now();
 }
 function _limpiarDirtyExpirados(){
   const ahora = Date.now();
-  // PFs expiradas
   for(const [id, ts] of _dirtyPFids){
     if(ahora - ts > DIRTY_TTL_MS){
       console.warn('[dirty] PF expirada sin confirmar:', id);
       _dirtyPFids.delete(id);
     }
   }
-  // PR expirado
   if(_dirtyPR_ts && ahora - _dirtyPR_ts > DIRTY_TTL_MS){
     console.warn('[dirty] PR expirado sin confirmar');
     _dirtyPR_ts = 0;
@@ -825,10 +832,12 @@ function _hayCambiosPendientes(){
       || (Date.now() - _ultimoCambioLocal) < VENTANA_GRACIA_MS;
 }
 
-// Sincronizar UNA proforma a Sheets — con retry y feedback
-// MARCA la proforma como dirty antes de empezar y la limpia solo si el servidor confirma OK.
+// Sincronizar UNA proforma a Sheets — con retry y manejo de rechazos del servidor
+// Si el servidor rechaza por 'stale' o 'deleted', el cliente re-baja la versión del servidor.
 async function syncPFtoSheet(pf){
   if(!pf||!pf.id) return false;
+  // Asegurar updatedAt
+  if(!pf.updatedAt) pf.updatedAt = Date.now();
   _marcarPFDirty(pf.id);
   _syncEnVuelo++;
   try{
@@ -836,8 +845,17 @@ async function syncPFtoSheet(pf){
       try{
         const r=await postScript('savePF',pf);
         if(r&&r.ok){
-          _dirtyPFids.delete(pf.id);  // confirmado en servidor → ya no es dirty
+          _dirtyPFids.delete(pf.id);
           return true;
+        }
+        // Rechazo explícito del servidor
+        if(r && r.ok === false && (r.reason === 'stale' || r.reason === 'deleted')){
+          console.warn('[savePF] Rechazo del servidor:', r.reason, 'id=', pf.id, r.msg || '');
+          _dirtyPFids.delete(pf.id);  // descartar cambio local
+          toast('⚠️ '+(r.msg || 'Cambio rechazado, se actualizará con versión del servidor'),'err');
+          // Re-bajar desde el servidor para actualizar local
+          try { await loadPFfromSheet(); } catch(e){}
+          return false;
         }
       }catch(e){}
       if(intento<3) await new Promise(r=>setTimeout(r,1000*intento));
@@ -861,8 +879,10 @@ async function syncAllPFtoSheet(){
 
 // Helper: sincroniza un array de proformas, auto-reduciendo el lote si falla por tamaño
 async function _syncPFenLotes(pfs, esUltimoGlobal){
-  if(!pfs.length) return;
-  const LOTE_INICIAL=3;  // Empieza con 3 (era 10 y fallaba con proformas grandes)
+  if(!pfs.length) return {ok:true, saved:0, rejected:[]};
+  const LOTE_INICIAL=3;
+  // Acumular resultados de todos los lotes para devolverlos al caller
+  const acumulado = { ok:true, saved:0, rejected:[] };
 
   let inicio=0;
   let lote=LOTE_INICIAL;
@@ -872,33 +892,41 @@ async function _syncPFenLotes(pfs, esUltimoGlobal){
     const esUltimo = esUltimoGlobal && (fin >= pfs.length);
 
     let exito=false;
+    let rLote=null;
     for(let intento=1;intento<=3;intento++){
       try{
         const r=await postScript('saveAllPF',{
           proformas:slice,
           nextNum:esUltimo?nextNum:undefined
         });
-        if(r&&r.ok){ exito=true; break; }
+        if(r&&r.ok){ exito=true; rLote=r; break; }
       }catch(e){
         console.warn('[sync] Intento '+intento+' falló lote de '+slice.length+':', e);
       }
       if(intento<3) await new Promise(r=>setTimeout(r,1000*intento));
     }
 
-    if(!exito && slice.length>1){
+    if(exito && rLote){
+      acumulado.saved += (rLote.saved || 0);
+      if(rLote.rejected && rLote.rejected.length){
+        acumulado.rejected = acumulado.rejected.concat(rLote.rejected);
+      }
+    } else if(!exito && slice.length>1){
       // Lote probablemente muy grande — dividir y reintentar
       console.warn('[sync] Lote de '+slice.length+' falló. Dividiendo...');
       const mitad=Math.floor(slice.length/2);
-      await _syncPFenLotes(slice.slice(0,mitad), false);
-      await _syncPFenLotes(slice.slice(mitad), esUltimo);
+      const r1 = await _syncPFenLotes(slice.slice(0,mitad), false);
+      const r2 = await _syncPFenLotes(slice.slice(mitad), esUltimo);
+      if(r1){ acumulado.saved += (r1.saved||0); acumulado.rejected = acumulado.rejected.concat(r1.rejected||[]); }
+      if(r2){ acumulado.saved += (r2.saved||0); acumulado.rejected = acumulado.rejected.concat(r2.rejected||[]); }
     } else if(!exito){
-      // Proforma individual que no entra — se salta para no bloquear todo
       console.error('[sync] Proforma no se pudo subir:', slice[0]&&slice[0].num);
     }
 
     inicio=fin;
     if(inicio<pfs.length) await new Promise(r=>setTimeout(r,300));
   }
+  return acumulado;
 }
 
 function loadPF(){
@@ -940,7 +968,7 @@ async function sincronizarTodo(silencioso=false){
   // Esto evita que el auto-sync pise un cambio reciente del usuario.
   if(silencioso && _hayCambiosPendientes()){
     console.log('[auto-sync] saltado — cambios locales en vuelo o recientes',
-                {dirtyPF:_dirtyPFids.size, dirtyPR:_dirtyPR, enVuelo:_syncEnVuelo});
+                {dirtyPF:_dirtyPFids.size, dirtyPR:_dirtyPR_ts, enVuelo:_syncEnVuelo});
     return;
   }
 
@@ -951,20 +979,33 @@ async function sincronizarTodo(silencioso=false){
   if(status) status.textContent='⏳ Sincronizando...';
 
   try{
-    // PASO 1: Subir todas las locales (con reducción automática de lote si la URL es muy larga)
-    // Si hay PFs dirty, asegurarnos que se suban primero (priorizadas).
-    if(proformas.length>0){
-      _syncEnVuelo++;
-      try{
-        await _syncPFenLotes(proformas.slice(), true);
-        // Si la subida fue exitosa para todo, marcar todo como limpio
-        // (saveAllPF responde ok solo cuando guardó todas las proformas del lote)
-        _dirtyPFids.clear();
-      } finally {
-        _syncEnVuelo--;
+    // PASO 1: Subir SOLO las proformas dirty (modificadas localmente)
+    // v5.6: antes subíamos TODAS — eso causaba que datos viejos pisaran cambios de otra PC
+    const dirtyIds = Array.from(_dirtyPFids.keys()).filter(function(id){ return _esPFDirty(id); });
+    if(dirtyIds.length > 0){
+      const pfsDirty = proformas.filter(function(p){ return dirtyIds.indexOf(p.id) >= 0; });
+      if(pfsDirty.length > 0){
+        _syncEnVuelo++;
+        try{
+          const resultado = await _syncPFenLotes(pfsDirty, true);
+          // Procesar rechazos del servidor (proformas stale o borradas)
+          if(resultado && resultado.rejected && resultado.rejected.length > 0){
+            console.warn('[sync] Rechazos del servidor:', resultado.rejected);
+            resultado.rejected.forEach(function(rej){ _dirtyPFids.delete(rej.id); });
+            toast('⚠️ '+resultado.rejected.length+' proforma(s) con versión más nueva en servidor — se actualizarán','err');
+          }
+          // Limpiar dirty de las que SÍ se guardaron (no rechazadas)
+          const rejectedIds = (resultado && resultado.rejected || []).map(function(r){ return r.id; });
+          dirtyIds.forEach(function(id){
+            if(rejectedIds.indexOf(id) < 0) _dirtyPFids.delete(id);
+          });
+        } finally {
+          _syncEnVuelo--;
+        }
       }
     }
-    // PASO 2: Bajar todo desde Sheets (incluye las de otras PCs)
+
+    // PASO 2: Bajar todo desde Sheets (incluye cambios de otras PCs Y tombstones BORRADO)
     await loadPFfromSheet();
     await cargarPedidosRapidos();
 
@@ -973,7 +1014,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604232300';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604232400';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -1038,23 +1079,40 @@ async function loadPFfromSheet(){
     const json=await fetchScript('action=readPF');
     if(json&&json.ok&&json.data&&json.data.length){
       // Construir mapa de proformas locales por id antes de reemplazar
-      // para poder rescatar campos que Sheets todavía no soporta (ej: jefePista)
       const localMap={};
       proformas.forEach(function(lp){ if(lp&&lp.id) localMap[lp.id]=lp; });
 
       // Servidor es fuente de verdad — reemplazar completo,
       // EXCEPTO las proformas dirty (modificadas localmente y pendientes de subir).
+      // NUEVO v5.6: procesar tombstones (estado='BORRADO') — se eliminan localmente
       proformas.length=0;
       const idsServidor=new Set();
+      let tombstonesDetectados=0;
       json.data.forEach(function(spf){
         idsServidor.add(spf.id);
         const local=localMap[spf.id];
 
+        // ⚠️ TOMBSTONE: si el servidor dice BORRADO, no incluir en proformas locales
+        // Esto propaga los borrados de otra PC a esta PC automáticamente.
+        if(spf.estado === 'BORRADO'){
+          tombstonesDetectados++;
+          return;  // saltar — no agregar a proformas[]
+        }
+
         // ⚠️ ANTI-RACE: si el local está dirty y NO ha expirado, mantener la versión local
         if(local && _esPFDirty(spf.id)){
-          console.log('[loadPF] preservando proforma dirty:', spf.id, local.num, 'estado='+local.estado);
-          proformas.push(local);
-          return;
+          // Pero solo si el updatedAt local es igual o más nuevo que el del servidor
+          // Si es más viejo, ganó la otra PC — se descarta el cambio local
+          const localTs = local.updatedAt || 0;
+          const serverTs = spf.updatedAt || 0;
+          if(localTs >= serverTs){
+            console.log('[loadPF] preservando proforma dirty local (más nueva):', spf.id, local.num);
+            proformas.push(local);
+            return;
+          } else {
+            console.warn('[loadPF] descartando cambio local (servidor más nuevo):', spf.id, local.num);
+            _dirtyPFids.delete(spf.id);
+          }
         }
 
         if(local){
@@ -1066,14 +1124,17 @@ async function loadPFfromSheet(){
         proformas.push(spf);
       });
 
-      // También conservar cualquier PF dirty que aún NO esté en el servidor
-      // (recién creada y no subida todavía)
+      // Conservar cualquier PF dirty que aún NO esté en el servidor
       _dirtyPFids.forEach(function(ts, id){
         if(!idsServidor.has(id) && localMap[id] && _esPFDirty(id)){
           console.log('[loadPF] preservando proforma dirty no-en-servidor:', id);
           proformas.push(localMap[id]);
         }
       });
+
+      if(tombstonesDetectados > 0){
+        console.log('[loadPF] '+tombstonesDetectados+' tombstones procesados (proformas borradas por otra PC)');
+      }
 
       // Ordenar por número descendente siempre
       proformas.sort((a,b)=>{
@@ -2019,6 +2080,7 @@ function editarAutorizada(id){
 async function elimPF(id){
   if(!confirm('¿Eliminar esta cotización?'))return;
   proformas=proformas.filter(p=>p.id!==id);
+  savePF();  // v5.6: persistir el borrado en localStorage
   updStats(); renderHist();
   toast('⏳ Eliminando...','ok');
   for(let i=1;i<=3;i++){
