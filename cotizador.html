@@ -333,9 +333,9 @@ tbody tr:hover td{background:var(--s2)}
   <div class="stats">
     <div class="stat"><div class="sv" id="s-hoy">L 0</div><div class="sl">Cotizado hoy</div></div>
     <div class="stat"><div class="sv" id="s-hoy-aut">L 0</div><div class="sl">Autorizado hoy</div></div>
-    <div class="stat"><div class="sv" id="s-pend">0</div><div class="sl">Cotizaciones totales</div></div>
-    <div class="stat"><div class="sv" id="s-pend-count">0</div><div class="sl">Pendientes</div></div>
-    <div class="stat"><div class="sv" id="s-aut-count">0</div><div class="sl">Autorizadas</div></div>
+    <div class="stat"><div class="sv" id="s-pend">0</div><div class="sl">Cotizaciones hoy</div></div>
+    <div class="stat"><div class="sv" id="s-pend-count">0</div><div class="sl">Pendientes hoy</div></div>
+    <div class="stat"><div class="sv" id="s-aut-count">0</div><div class="sl">Autorizadas hoy</div></div>
   </div>
   <div class="card">
     <div class="ctitle">Proformas Pendientes</div>
@@ -1188,11 +1188,16 @@ function goPage(id){
 //  STATS
 // ══════════════════════════════════════════
 function updStats(){
-  document.getElementById('s-pend').textContent=proformas.length;
   const hoy=new Date().toISOString().slice(0,10);
+  // deHoy: TODAS las proformas creadas hoy, sin importar estado
+  // (incluye pend, autorizado, hist y archivada_pend)
   const deHoy=proformas.filter(function(p){return p.fecha&&String(p.fecha).slice(0,10)===hoy;});
+  // Cotizaciones hoy: el conteo total de TODO lo cotizado hoy
+  document.getElementById('s-pend').textContent=deHoy.length;
+  // Pendientes hoy: estado pend con fecha de hoy
   const pendCount=deHoy.filter(function(p){return p.estado==='pend';}).length;
-  const autCount=proformas.filter(function(p){return p.estado==='autorizado';}).length;
+  // Autorizadas hoy: autorizado o hist (entregado) con fecha de hoy
+  const autCount=deHoy.filter(function(p){return p.estado==='autorizado'||p.estado==='hist';}).length;
   const elPend=document.getElementById('s-pend-count'); if(elPend) elPend.textContent=pendCount;
   const elAut=document.getElementById('s-aut-count'); if(elAut) elAut.textContent=autCount;
   // Cotizado hoy incluye todos los estados (pend, autorizado, hist)
