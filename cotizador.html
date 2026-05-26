@@ -333,9 +333,9 @@ tbody tr:hover td{background:var(--s2)}
   <div class="stats">
     <div class="stat"><div class="sv" id="s-hoy">L 0</div><div class="sl">Cotizado hoy</div></div>
     <div class="stat"><div class="sv" id="s-hoy-aut">L 0</div><div class="sl">Autorizado hoy</div></div>
-    <div class="stat"><div class="sv" id="s-pend">0</div><div class="sl">Cotizaciones hoy</div></div>
-    <div class="stat"><div class="sv" id="s-pend-count">0</div><div class="sl">Pendientes hoy</div></div>
-    <div class="stat"><div class="sv" id="s-aut-count">0</div><div class="sl">Autorizadas hoy</div></div>
+    <div class="stat"><div class="sv" id="s-pend">0</div><div class="sl">Cotizaciones totales</div></div>
+    <div class="stat"><div class="sv" id="s-pend-count">0</div><div class="sl">Pendientes</div></div>
+    <div class="stat"><div class="sv" id="s-aut-count">0</div><div class="sl">Autorizadas</div></div>
   </div>
   <div class="card">
     <div class="ctitle">Proformas Pendientes</div>
@@ -768,7 +768,12 @@ async function loadDBfromSheet(){
 }
 
 function savePF(){
-  // Noop — todo se guarda directo a Sheets via syncPFtoSheet
+  // Backup en localStorage por si se pierde conexión a Sheets
+  try {
+    localStorage.setItem('tm_proformas', JSON.stringify(proformas));
+  } catch(e) {
+    console.warn('[savePF] error en localStorage:', e);
+  }
 }
 // ══════════════════════════════════════════
 //  SISTEMA DE CAMBIOS PENDIENTES (anti race-condition) v5.6
@@ -930,10 +935,22 @@ async function _syncPFenLotes(pfs, esUltimoGlobal){
 }
 
 function loadPF(){
-  // 1. Cargar backup local inmediatamente
-  loadPFfromLocalBackup();
-  loadPendingSync();
-  setTimeout(()=>updSyncIndicator(),100);
+  // 1. Cargar backup local inmediatamente desde localStorage (defensivo)
+  try {
+    const raw = localStorage.getItem('tm_proformas');
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (Array.isArray(data) && data.length) {
+        proformas.length = 0;
+        data.forEach(p => proformas.push(p));
+        // Recalcular nextNum desde proformas locales
+        proformas.forEach(p => {
+          const n = parseInt(String(p.num || '').replace(/^[A-Z]+/i,''));
+          if (!isNaN(n) && n >= nextNum) nextNum = n + 1;
+        });
+      }
+    }
+  } catch(e) { console.warn('[loadPF] error cargando backup local:', e); }
   // 2. Al iniciar: SUBIR locales primero, luego bajar de Sheets
   setTimeout(()=>sincronizarTodo(true),800);
   // 3. Auto-sync cada 20s. Se SALTA automáticamente si hay cambios locales en vuelo
@@ -1014,7 +1031,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202604232400';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202605260800';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -1188,16 +1205,11 @@ function goPage(id){
 //  STATS
 // ══════════════════════════════════════════
 function updStats(){
+  document.getElementById('s-pend').textContent=proformas.length;
   const hoy=new Date().toISOString().slice(0,10);
-  // deHoy: TODAS las proformas creadas hoy, sin importar estado
-  // (incluye pend, autorizado, hist y archivada_pend)
   const deHoy=proformas.filter(function(p){return p.fecha&&String(p.fecha).slice(0,10)===hoy;});
-  // Cotizaciones hoy: el conteo total de TODO lo cotizado hoy
-  document.getElementById('s-pend').textContent=deHoy.length;
-  // Pendientes hoy: estado pend con fecha de hoy
   const pendCount=deHoy.filter(function(p){return p.estado==='pend';}).length;
-  // Autorizadas hoy: autorizado o hist (entregado) con fecha de hoy
-  const autCount=deHoy.filter(function(p){return p.estado==='autorizado'||p.estado==='hist';}).length;
+  const autCount=proformas.filter(function(p){return p.estado==='autorizado';}).length;
   const elPend=document.getElementById('s-pend-count'); if(elPend) elPend.textContent=pendCount;
   const elAut=document.getElementById('s-aut-count'); if(elAut) elAut.textContent=autCount;
   // Cotizado hoy incluye todos los estados (pend, autorizado, hist)
@@ -1445,7 +1457,7 @@ function buscarHist(q){
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="color:var(--gold);font-weight:700;font-size:15px">${it.c} unid</div>
-          <div style="color:var(--mu2);font-size:11px">${mon} ${fmt(it.p)} c/ISV</div>
+          <div style="color:var(--mu2);font-size:11px">${mon} ${fmt(it.p)} c/u</div>
         </div>
       </div>
     </div>`).join('');
@@ -1480,7 +1492,7 @@ function abrirOrden(numOrden, itemDestacado){
         <input type="checkbox" id="oi-${i}" ${dest?'checked':''}>
         <div class="oi-d">
           <div class="oi-n">${it.d}</div>
-          <div class="oi-m">${mon} ${fmt(it.p)} c/ISV · base sin ISV: ${mon} ${fmt(it.p/1.15)}</div>
+          <div class="oi-m">${mon} ${fmt(it.p)} sin ISV · con ISV 15%: ${mon} ${fmt(it.p*1.15)}</div>
         </div>
         <div class="oi-c">${it.c} unid</div>
       </label>`;
@@ -1499,11 +1511,8 @@ function agregarSeleccionados(){
   items.forEach((it,i)=>{
     const cb=document.getElementById('oi-'+i);
     if(!cb||!cb.checked) return;
-    // El precio del taller (it.p) viene CON 15% ISV incluido.
-    // El cotizador trabaja internamente con precio SIN ISV (recalc() suma el ISV al final).
-    // → Convertimos a base sin ISV dividiendo entre 1.15.
-    let precio = it.p / 1.15;
-    let ajustePct=0, mesesAnt=0;
+    // Ajuste por antigüedad
+    let precio=it.p, ajustePct=0, mesesAnt=0;
     if(ordenActual.f){
       const fechaOrd=new Date(ordenActual.f);
       const hoy=new Date();
@@ -1511,7 +1520,7 @@ function agregarSeleccionados(){
       if(mesesAnt>12) ajustePct=15;
       else if(mesesAnt>6) ajustePct=10;
       else if(mesesAnt>3) ajustePct=5;
-      if(ajustePct>0) precio=precio*(1+ajustePct/100);
+      if(ajustePct>0) precio=it.p*(1+ajustePct/100);
     }
     const item={desc:it.d, cod:'', precio:Math.round(precio*100)/100, costo:0, ganancia:ganG,
                 cantidad:it.c, isv:isvDef, deOrden:ordenActual.n};
