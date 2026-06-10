@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="version" content="202604220900">
+<meta name="version" content="202606101000">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1031,7 +1031,7 @@ async function sincronizarTodo(silencioso=false){
 
     const ahora=new Date();
     const hhmm=ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202605260800';
+    if(status) status.textContent='Tecnimax S. DE. R.L  ·  '+hhmm+'  ·  '+proformas.length+' cotizaciones  ·  v202606101000';
     if(!silencioso) toast('✅ Sincronizado — '+proformas.length+' cotizaciones','ok');
   }catch(e){
     if(status) status.textContent='⚠️ Sin conexión — datos locales';
@@ -2301,7 +2301,7 @@ async function generarPDF(pf){
   // Cada fila lleva su nivel con una marca de color en la columna PRIO
   const ordenPrio={crit:0,rec:1,prev:2};
   const labelPrio={crit:'CRITICO',rec:'RECOMEND',prev:'PREVENT'};
-  const fillPrio ={crit:[254,226,226], rec:[254,243,199], prev:[209,250,229]};  // fondo suave por prio
+  const fillPrio ={crit:[254,226,226], rec:[255,255,255], prev:[209,250,229]};  // fondo suave por prio — REC sin color para ahorrar tinta (es el más usado)
   const txtPrio  ={crit:[153,27,27], rec:[146,64,14], prev:[6,95,70]};         // texto oscuro por prio
 
   const tabla=(items,titulo,colorRGB)=>{
@@ -2404,7 +2404,7 @@ async function generarPDF(pf){
     let xCol=38;
     [
       {nom:'Critico',     tot:totCrit, col:[220,38,38]},
-      {nom:'Recomendado', tot:totRec,  col:[245,158,11]},
+      {nom:'Recomendado', tot:totRec,  col:[100,100,115]},
       {nom:'Preventivo',  tot:totPrev, col:[16,185,129]}
     ].forEach(function(g){
       if(g.tot>0){
