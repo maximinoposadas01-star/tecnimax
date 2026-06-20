@@ -651,7 +651,7 @@ tbody tr:hover td{background:var(--s2)}
         <input type="number" id="mm-costo" placeholder="0.00" min="0" step="0.01" oninput="calcVenta()">
       </div>
       <div class="f">
-        <label id="lbl-gan">% Margen s/venta</label>
+        <label id="lbl-gan">% Utilidad s/costo</label>
         <div style="position:relative">
           <input type="number" id="mm-gan" min="0" step="0.5" oninput="calcVenta()">
           <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--mu)">%</span>
@@ -1561,7 +1561,7 @@ function abrirManual(tipo){
   // Ocultar costo/ganancia para servicios
   document.getElementById('mm-costo-gan').style.display=tipo==='serv'?'none':'';
   // Etiqueta dinámica según tipo
-  document.getElementById('lbl-gan').textContent=tipo==='prod'?'% Margen s/venta':'% Ganancia';
+  document.getElementById('lbl-gan').textContent=tipo==='prod'?'% Utilidad s/costo':'% Ganancia';
   updHint();
   document.getElementById('modal-man').classList.add('on');
   setTimeout(()=>document.getElementById('mm-desc').focus(),150);
@@ -1587,7 +1587,7 @@ function editarItemManual(tipo, i){
   let gan = it.ganancia;
   if((gan==null || gan==='') && it.costo && it.precio){
     const c=Number(it.costo), v=Number(it.precio);
-    gan = tipo==='prod' ? ((v-c)/v*100) : ((v-c)/c*100);
+    gan = (v-c)/c*100;
   }
   document.getElementById('mm-gan').value = (gan!=null && !isNaN(gan))
     ? Number(gan).toFixed(1)
@@ -1595,10 +1595,11 @@ function editarItemManual(tipo, i){
   // Mostrar sección costo/ganancia solo para productos
   document.getElementById('mm-costo-gan').style.display = tipo==='serv' ? 'none' : '';
   // Etiqueta dinámica según tipo
-  document.getElementById('lbl-gan').textContent = tipo==='prod' ? '% Margen s/venta' : '% Ganancia';
-  // Si hay costo, pre-mostrar el panel de preview
+  document.getElementById('lbl-gan').textContent = tipo==='prod' ? '% Utilidad s/costo' : '% Ganancia';
+  // Si hay costo, pre-mostrar el preview SIN reescribir el precio guardado:
+  // recalcGan deriva la utilidad desde costo+precio (preserva el precio existente).
   if(it.costo && Number(it.costo)>0){
-    calcVenta();
+    recalcGan();
   } else {
     document.getElementById('mm-prev').style.display='none';
   }
@@ -1611,15 +1612,9 @@ function calcVenta(){
   const c=parseFloat(document.getElementById('mm-costo').value)||0;
   const g=parseFloat(document.getElementById('mm-gan').value)||0;
   if(!c){ document.getElementById('mm-prev').style.display='none'; return; }
-  let venta, gm;
-  if(tipoModal==='prod'){
-    // Margen sobre venta: venta = costo / (1 - %/100)
-    if(g>=100){ toast('El margen no puede ser 100% o más','err'); return; }
-    venta=c/(1-g/100); gm=venta-c;
-  } else {
-    // Markup sobre costo: venta = costo + (costo × %/100)
-    gm=c*g/100; venta=c+gm;
-  }
+  // Utilidad sobre el costo (markup) para productos Y servicios:
+  // venta = costo + (costo × %/100)
+  const gm=c*g/100, venta=c+gm;
   document.getElementById('mm-precio').value=venta.toFixed(2);
   document.getElementById('pr-co').textContent=getMon()+' '+fmt(c);
   document.getElementById('pr-ga').textContent=getMon()+' '+fmt(gm);
@@ -1631,8 +1626,8 @@ function recalcGan(){
   const c=parseFloat(document.getElementById('mm-costo').value)||0;
   const v=parseFloat(document.getElementById('mm-precio').value)||0;
   if(c&&v){
-    // Inverso: prod = margen s/venta, serv = markup s/costo
-    const pct=tipoModal==='prod'?((v-c)/v*100):((v-c)/c*100);
+    // Inverso: utilidad sobre el costo para productos y servicios
+    const pct=(v-c)/c*100;
     document.getElementById('mm-gan').value=pct.toFixed(1);
     document.getElementById('pr-co').textContent=getMon()+' '+fmt(c);
     document.getElementById('pr-ga').textContent=getMon()+' '+fmt(v-c);
